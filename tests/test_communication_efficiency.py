@@ -6,7 +6,7 @@ Tests Top-k sparsification and quantization algorithms.
 import unittest
 import numpy as np
 import torch
-from federated_learning import apply_communication_efficiency
+from src.federated_learning import apply_communication_efficiency
 
 class TestCommunicationEfficiency(unittest.TestCase):
     

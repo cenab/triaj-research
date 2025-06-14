@@ -1,0 +1,187 @@
+{
+  "experiment": {
+    "name": "FairTriEdge-FL Medical Triage",
+    "description": "Federated learning experiment for medical triage with privacy and fairness",
+    "data_file": "triaj_data.csv",
+    "output_dir": "results",
+    "log_level": "INFO"
+  },
+  
+  "federated_learning": {
+    "num_rounds": 5,
+    "num_clients": 3,
+    "local_epochs": 1,
+    "aggregation_method": "fedavg",
+    "client_selection": "random",
+    "min_clients_per_round": 2,
+    
+    "data_distribution": {
+      "strategy": "random",
+      "heterogeneity_level": 0.5,
+      "min_samples_per_client": 50
+    }
+  },
+  
+  "model": {
+    "architecture": "TriageModel",
+    "hidden_size": 128,
+    "num_layers": 3,
+    "dropout": 0.2,
+    "activation": "relu",
+    
+    "training": {
+      "batch_size": 32,
+      "learning_rate": 0.001,
+      "optimizer": "adam",
+      "weight_decay": 1e-4,
+      "scheduler": "step",
+      "scheduler_step_size": 10,
+      "scheduler_gamma": 0.1
+    }
+  },
+  
+  "privacy": {
+    "enable_differential_privacy": true,
+    "epsilon": 1.0,
+    "delta": 1e-5,
+    "max_grad_norm": 1.0,
+    "noise_multiplier": null,
+    "method": "opacus"
+  },
+  
+  "robustness": {
+    "enable_robust_aggregation": true,
+    "aggregation_methods": ["fedavg", "krum", "trimmed_mean", "median"],
+    "byzantine_clients": 0,
+    "trim_ratio": 0.1,
+    "krum_f": 0,
+    
+    "data_drift_detection": {
+      "enable": true,
+      "methods": ["adwin", "ks_test"],
+      "threshold": 0.05,
+      "window_size": 100
+    },
+    
+    "domain_adaptation": {
+      "enable": true,
+      "methods": ["dann", "mmd"],
+      "adaptation_weight": 0.1
+    }
+  },
+  
+  "communication": {
+    "enable_compression": true,
+    "compression_methods": ["top_k", "quantization"],
+    "compression_ratio": 0.1,
+    "quantization_bits": 2,
+    "sparsification_threshold": 0.01
+  },
+  
+  "fairness": {
+    "enable_monitoring": true,
+    "sensitive_attributes": ["age_group", "gender"],
+    "fairness_metrics": [
+      "f1_score_parity",
+      "demographic_parity",
+      "equalized_odds"
+    ],
+    "fairness_threshold": 0.1,
+    "subgroup_evaluation": true,
+    "bias_mitigation": false
+  },
+  
+  "explainable_ai": {
+    "enable_xai": true,
+    "feature_importance": {
+      "methods": ["shap", "permutation"],
+      "num_features_to_explain": 5,
+      "background_samples": 100
+    },
+    
+    "llm_explanation": {
+      "enable": true,
+      "provider": "openrouter",
+      "model": "anthropic/claude-3-sonnet",
+      "fallback_provider": "openai",
+      "fallback_model": "gpt-4",
+      "max_tokens": 200,
+      "temperature": 0.7,
+      "medical_context": true,
+      "explanation_style": "clinical"
+    },
+    
+    "rule_extraction": {
+      "enable": true,
+      "max_rules": 10,
+      "min_support": 0.1,
+      "min_confidence": 0.8
+    }
+  },
+  
+  "evaluation": {
+    "metrics": [
+      "accuracy",
+      "f1_score",
+      "precision",
+      "recall",
+      "auc_roc",
+      "confusion_matrix"
+    ],
+    "cross_validation": {
+      "enable": false,
+      "folds": 5,
+      "stratified": true
+    },
+    "test_split": 0.2,
+    "validation_split": 0.1
+  },
+  
+  "optimization": {
+    "enable_tinyml": true,
+    "techniques": ["quantization", "pruning", "knowledge_distillation"],
+    
+    "quantization": {
+      "enable": false,
+      "backend": "fbgemm",
+      "calibration_samples": 100
+    },
+    
+    "pruning": {
+      "enable": true,
+      "amount": 0.5,
+      "structured": false,
+      "global_unstructured": true
+    },
+    
+    "knowledge_distillation": {
+      "enable": true,
+      "temperature": 4.0,
+      "alpha": 0.7,
+      "teacher_epochs": 10,
+      "student_epochs": 5
+    }
+  },
+  
+  "logging": {
+    "enable_wandb": false,
+    "enable_tensorboard": false,
+    "log_frequency": 10,
+    "save_checkpoints": true,
+    "checkpoint_frequency": 5
+  },
+  
+  "hardware": {
+    "use_cuda": true,
+    "cuda_device": 0,
+    "mixed_precision": false,
+    "num_workers": 4,
+    "pin_memory": true
+  },
+  
+  "reproducibility": {
+    "seed": 42,
+    "deterministic": true,
+    "benchmark": false
+  }
+}

@@ -5,13 +5,13 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import time # Import time for latency measurement
 
-from data_preparation import load_and_clean_data
-from feature_engineering import feature_engineer_data
-from data_simulation import simulate_multi_site_data
-from model_architecture import TriageModel
-from model_optimization import apply_quantization, apply_pruning, apply_knowledge_distillation
-from federated_learning import FederatedClient, FederatedServer, apply_domain_adaptation, monitor_data_drift, apply_differential_privacy, apply_robust_aggregation, apply_communication_efficiency, monitor_federated_fairness, get_model_parameters, set_model_parameters
-from explainable_ai import generate_feature_importance, generate_llm_explanation, extract_boolean_rules
+from .data_preparation import load_and_clean_data
+from .feature_engineering import feature_engineer_data
+from .data_simulation import simulate_multi_site_data
+from .model_architecture import TriageModel
+from .model_optimization import apply_quantization, apply_pruning, apply_knowledge_distillation
+from .federated_learning import FederatedClient, FederatedServer, apply_domain_adaptation, monitor_data_drift, apply_differential_privacy, apply_robust_aggregation, apply_communication_efficiency, monitor_federated_fairness, get_model_parameters, set_model_parameters
+from .explainable_ai import generate_feature_importance, generate_llm_explanation, extract_boolean_rules
 
 def main():
     file_path = 'triaj_data.csv'

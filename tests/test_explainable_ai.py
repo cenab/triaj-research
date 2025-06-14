@@ -12,7 +12,7 @@ import os
 import sys
 
 # Import the modules to test
-from explainable_ai import (
+from src.explainable_ai import (
     OpenRouterClient, 
     LLMExplanationEngine,
     generate_feature_importance,
@@ -132,11 +132,12 @@ class TestOpenRouterClient(unittest.TestCase):
         }
         
         # First call fails, second succeeds
-        mock_post.side_effect = [
+        responses = [
             type('MockResponse', (), {'raise_for_status': lambda: None, 'status_code': 429})(),
             mock_response_success
         ]
-        mock_post.side_effect[0].raise_for_status = Mock(side_effect=Exception("Rate limit"))
+        responses[0].raise_for_status = Mock(side_effect=Exception("Rate limit"))
+        mock_post.side_effect = responses
         
         # Should try fallback and succeed
         result = self.client.generate_explanation("Test prompt")
@@ -341,7 +342,7 @@ class TestFeatureImportance(unittest.TestCase):
         total_importance = sum(abs(score) for _, score in result)
         self.assertAlmostEqual(total_importance, 1.0, places=5)
     
-    @patch('explainable_ai.SHAP_AVAILABLE', True)
+    @patch('src.explainable_ai.SHAP_AVAILABLE', True)
     @patch('shap.Explainer')
     def test_shap_feature_importance(self, mock_explainer):
         """Test SHAP feature importance generation"""
@@ -368,8 +369,8 @@ class TestFeatureImportance(unittest.TestCase):
         self.assertIsInstance(result, list)
         self.assertEqual(len(result), len(self.feature_names))
     
-    @patch('explainable_ai.PERMUTATION_AVAILABLE', True)
-    @patch('sklearn.inspection.permutation_importance')
+    @patch('src.explainable_ai.PERMUTATION_AVAILABLE', True)
+    @patch('src.explainable_ai.permutation_importance')
     def test_permutation_importance(self, mock_perm_importance):
         """Test permutation importance generation"""
         # Mock permutation importance result
@@ -448,7 +449,7 @@ class TestLegacyLLMExplanation(unittest.TestCase):
         self.assertIn("AI Triage Decision:", result)
         self.assertIn("Key Contributing Factors:", result)
     
-    @patch('explainable_ai.REQUESTS_AVAILABLE', True)
+    @patch('src.explainable_ai.REQUESTS_AVAILABLE', True)
     @patch.object(OpenRouterClient, 'generate_explanation')
     def test_openrouter_explanation(self, mock_generate):
         """Test OpenRouter explanation generation"""

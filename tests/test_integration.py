@@ -13,15 +13,15 @@ import tempfile
 import os
 
 # Import modules to test
-from federated_learning import (
+from src.federated_learning import (
     FederatedClient, FederatedServer, apply_robust_aggregation,
     apply_communication_efficiency, apply_domain_adaptation,
     monitor_federated_fairness, monitor_data_drift
 )
-from explainable_ai import (
+from src.explainable_ai import (
     OpenRouterClient, LLMExplanationEngine, generate_feature_importance
 )
-from model_architecture import TriageModel
+from src.model_architecture import TriageModel
 
 class TestIntegration(unittest.TestCase):
     
@@ -132,7 +132,8 @@ class TestIntegration(unittest.TestCase):
                 torch.randn(1, self.num_boolean),
                 torch.randn(1, self.num_temporal)
             )
-            
+
+            self.global_model.eval()  # Set to evaluation mode for inference
             with torch.no_grad():
                 output = self.global_model(*test_input)
                 self.assertEqual(output.shape, (1, self.num_classes))
@@ -369,6 +370,7 @@ class TestIntegration(unittest.TestCase):
         print("✓ LLM explanation engine initialized")
         
         # Test fallback explanation
+        self.global_model.eval()  # Set to evaluation mode for inference
         with torch.no_grad():
             prediction = torch.argmax(
                 self.global_model(test_numerical, test_boolean, test_temporal)

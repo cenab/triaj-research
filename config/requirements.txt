@@ -1,0 +1,29 @@
+# Core ML and data science libraries
+torch>=1.9.0
+torchvision
+numpy
+pandas
+scikit-learn
+
+# Federated learning and privacy libraries
+alibi-detect
+shap
+opacus
+scipy
+
+# Explainable AI and LLM libraries
+requests
+openai
+
+# Testing libraries
+pytest
+pytest-cov
+
+# Optional enhanced libraries
+aif360
+torchmetrics
+matplotlib
+seaborn
+
+# Environment management
+python-dotenv

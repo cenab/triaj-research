@@ -6,7 +6,7 @@ from collections import OrderedDict
 import numpy as np
 
 # Assuming TriageModel is defined in model_architecture.py
-from model_architecture import TriageModel
+from .model_architecture import TriageModel
 
 def get_model_parameters(model):
     """Returns the current model parameters as a list of NumPy arrays."""
@@ -780,11 +780,41 @@ def apply_communication_efficiency(model_updates, compression_ratio=0.1, method=
         # Top-k Sparsification Implementation - keeps only the k largest magnitude updates
         # Significantly reduces communication overhead while preserving important updates
         
+        if not model_updates:
+            return []
         compressed_updates = []
         total_params = 0
         total_kept = 0
         
         for update in model_updates:
+            # Handle case where update is a list of parameters
+            if isinstance(update, list):
+                # Process each parameter in the list
+                compressed_params = []
+                for param in update:
+                    if isinstance(param, torch.Tensor):
+                        param = param.numpy()
+                    
+                    # Flatten the parameter to find top-k values by magnitude
+                    flat_param = param.flatten()
+                    total_params += len(flat_param)
+                    
+                    # Calculate k based on compression ratio
+                    k = min(len(flat_param), max(1, int(len(flat_param) * compression_ratio)))
+                    total_kept += k
+                    
+                    # Get indices of top-k values by absolute magnitude
+                    top_k_indices = np.argpartition(np.abs(flat_param), -k)[-k:]
+                    
+                    # Create a sparse update with only top-k values
+                    sparse_param = np.zeros_like(flat_param)
+                    sparse_param[top_k_indices] = flat_param[top_k_indices]
+                    
+                    compressed_params.append(sparse_param.reshape(param.shape))
+                
+                compressed_updates.append(compressed_params)
+                continue
+            
             if isinstance(update, torch.Tensor):
                 update = update.numpy()
             
@@ -793,7 +823,7 @@ def apply_communication_efficiency(model_updates, compression_ratio=0.1, method=
             total_params += len(flat_update)
             
             # Calculate k based on compression ratio
-            k = max(1, int(len(flat_update) * compression_ratio))
+            k = min(len(flat_update), max(1, int(len(flat_update) * compression_ratio)))
             total_kept += k
             
             # Get indices of top-k values by absolute magnitude
@@ -831,6 +861,41 @@ def apply_communication_efficiency(model_updates, compression_ratio=0.1, method=
         
         compressed_updates = []
         for update in model_updates:
+            # Handle case where update is a list of parameters
+            if isinstance(update, list):
+                # Process each parameter in the list
+                quantized_params = []
+                for param in update:
+                    if isinstance(param, torch.Tensor):
+                        param = param.numpy()
+                    
+                    if bits == 1:
+                        # 1-bit quantization: sign-based
+                        quantized_param = np.sign(param)
+                        # Store the scale factor for reconstruction
+                        scale = np.mean(np.abs(param))
+                        quantized_param = quantized_param * scale
+                    else:
+                        # Multi-bit uniform quantization
+                        # Find min and max values for dynamic range
+                        min_val = np.min(param)
+                        max_val = np.max(param)
+                        
+                        if max_val == min_val:
+                            # Handle constant arrays
+                            quantized_param = param
+                        else:
+                            # Quantize to specified number of levels
+                            scale = (max_val - min_val) / (levels - 1)
+                            quantized_indices = np.round((param - min_val) / scale)
+                            quantized_indices = np.clip(quantized_indices, 0, levels - 1)
+                            quantized_param = min_val + quantized_indices * scale
+                    
+                    quantized_params.append(quantized_param)
+                
+                compressed_updates.append(quantized_params)
+                continue
+            
             if isinstance(update, torch.Tensor):
                 update = update.numpy()
             

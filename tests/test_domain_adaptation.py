@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 import torch
 import torch.nn as nn
-from federated_learning import apply_domain_adaptation
+from src.federated_learning import apply_domain_adaptation
 
 class TestDomainAdaptation(unittest.TestCase):
     
@@ -151,7 +151,7 @@ class TestDomainAdaptation(unittest.TestCase):
             # Test self-kernel (diagonal should be 1)
             self_kernel = rbf_kernel(x, x)
             diagonal = torch.diag(self_kernel)
-            torch.testing.assert_close(diagonal, torch.ones_like(diagonal), rtol=1e-5)
+            torch.testing.assert_close(diagonal, torch.ones_like(diagonal), rtol=1e-5, atol=1e-8)
     
     def test_mmd_loss_computation(self):
         """Test MMD loss computation"""

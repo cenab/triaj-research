@@ -6,7 +6,7 @@ Tests Krum, Trimmed Mean, and Median aggregation algorithms.
 import unittest
 import numpy as np
 import torch
-from federated_learning import apply_robust_aggregation
+from src.federated_learning import apply_robust_aggregation
 
 class TestRobustAggregation(unittest.TestCase):
     
