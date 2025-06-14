@@ -1,0 +1,214 @@
+--- Phase 1: Data Preparation and Simulation Environment Setup ---
+Step 1: Loading and Initial Cleaning Data...
+Initial data cleaning complete.
+Shape after cleaning: (539, 61)
+
+Step 2: Feature Engineering Data...
+Feature engineering complete.
+Shape after feature engineering: (539, 281)
+
+First 5 rows of Feature Engineered Data:
+        yaş  sistolik kb  diastolik kb  ...     month  year  doğru triyaj_encoded
+0  0.804598     1.935667      1.839205  ...  0.571429   0.0                     2
+1  0.605229    -1.043274     -0.336485  ...  0.571429   0.0                     2
+2 -0.192249    -0.050294     -0.336485  ...  0.571429   0.0                     1
+3  0.605229     1.439177      1.404067  ...  0.571429   0.0                     2
+4  1.103652    -0.050294      0.533791  ...  1.000000   0.0                     2
+
+[5 rows x 281 columns]
+
+Target variable distribution:
+doğru triyaj_encoded
+1    332
+2    112
+0     95
+Name: count, dtype: int64
+
+Step 3: Simulated Multi-Site Data Generation...
+
+Simulating random split into 3 clients:
+  client_0: 180 samples
+  client_1: 180 samples
+  client_2: 179 samples
+
+Simulating demographic split by age into 2 clients (pediatric vs adult):
+  client_pediatric: 294 samples
+  client_adult: 245 samples
+
+Simulating demographic split by gender:
+  client_male: 263 samples
+  client_female: 276 samples
+
+Simulating temporal split into 2 clients:
+  client_year_0: 46 samples
+  client_year_1: 493 samples
+
+--- Phase 1.4: Domain Adaptation Strategy ---
+Applying Domain Adaptation (placeholder: data returned as is).
+Domain adaptation applied (placeholder).
+
+--- Phase 1.5: Continuous Drift Monitoring ---
+Monitoring Data Drift (placeholder).
+Data drift detected: False (placeholder).
+
+--- Phase 2: Core Model Development and Optimization ---
+Step 2.1: Initializing Triage Model...
+Triage Model initialized.
+Model input dimensions: Numerical=7, Boolean=268, Temporal=3
+Number of output classes: 3
+Model architecture:
+ TriageModel(
+  (numerical_fc1): Linear(in_features=7, out_features=64, bias=True)
+  (numerical_bn1): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+  (numerical_fc2): Linear(in_features=64, out_features=32, bias=True)
+  (numerical_bn2): BatchNorm1d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+  (boolean_fc1): Linear(in_features=268, out_features=128, bias=True)
+  (boolean_bn1): BatchNorm1d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+  (boolean_fc2): Linear(in_features=128, out_features=64, bias=True)
+  (boolean_bn2): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+  (temporal_fc1): Linear(in_features=3, out_features=32, bias=True)
+  (temporal_bn1): BatchNorm1d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+  (fusion_fc1): Linear(in_features=128, out_features=128, bias=True)
+  (fusion_bn1): BatchNorm1d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+  (fusion_fc2): Linear(in_features=128, out_features=64, bias=True)
+  (fusion_bn2): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+  (output_layer): Linear(in_features=64, out_features=3, bias=True)
+)
+
+Step 2.2: Resource Optimization (TinyML)...
+
+Applying Quantization (skipped for now due to backend issues)...
+
+Applying Pruning...
+Pruning applied: 50.0% of connections removed from linear layers.
+Pruning applied.
+
+Demonstrating Knowledge Distillation (requires training data)...
+Starting knowledge distillation for 2 epochs...
+Epoch 1/2, Loss: 0.6019
+Epoch 2/2, Loss: 0.4009
+Knowledge distillation complete.
+Knowledge Distillation demonstrated.
+
+--- Phase 2.3: Personalization Mechanisms ---
+Personalization based on static patient factors (age, comorbidities) is handled by feature engineering.
+Dynamic personalization (learning from repeated visits/baselines) will be integrated with on-device model adaptation in Phase 3 (Federated Learning).
+
+--- Phase 3: Federated Learning and Robustness Integration ---
+Step 3.1: Simulated Multi-Node Training (Federated Learning Round)...
+
+--- Federated Learning Round 1/5 ---
+Client client_0: Performing local training and on-device adaptation...
+Client client_0 trained. Avg Loss: 1.0534
+Client client_1: Performing local training and on-device adaptation...
+Client client_1 trained. Avg Loss: 1.0826
+Client client_2: Performing local training and on-device adaptation...
+Client client_2 trained. Avg Loss: 1.0723
+Server aggregated model updates.
+
+--- Global Model Evaluation after Round 1 ---
+Global model evaluation: Accuracy = 17.59%
+
+--- Federated Learning Round 2/5 ---
+Client client_0: Performing local training and on-device adaptation...
+Client client_0 trained. Avg Loss: 0.7849
+Client client_1: Performing local training and on-device adaptation...
+Client client_1 trained. Avg Loss: 0.8465
+Client client_2: Performing local training and on-device adaptation...
+Client client_2 trained. Avg Loss: 0.8102
+Server aggregated model updates.
+
+--- Global Model Evaluation after Round 2 ---
+Global model evaluation: Accuracy = 27.78%
+
+--- Federated Learning Round 3/5 ---
+Client client_0: Performing local training and on-device adaptation...
+Client client_0 trained. Avg Loss: 0.6518
+Client client_1: Performing local training and on-device adaptation...
+Client client_1 trained. Avg Loss: 0.7129
+Client client_2: Performing local training and on-device adaptation...
+Client client_2 trained. Avg Loss: 0.6758
+Server aggregated model updates.
+
+--- Global Model Evaluation after Round 3 ---
+Global model evaluation: Accuracy = 69.44%
+
+--- Federated Learning Round 4/5 ---
+Client client_0: Performing local training and on-device adaptation...
+Client client_0 trained. Avg Loss: 0.5347
+Client client_1: Performing local training and on-device adaptation...
+Client client_1 trained. Avg Loss: 0.6141
+Client client_2: Performing local training and on-device adaptation...
+Client client_2 trained. Avg Loss: 0.6312
+Server aggregated model updates.
+
+--- Global Model Evaluation after Round 4 ---
+Global model evaluation: Accuracy = 70.37%
+
+--- Federated Learning Round 5/5 ---
+Client client_0: Performing local training and on-device adaptation...
+Client client_0 trained. Avg Loss: 0.4513
+Client client_1: Performing local training and on-device adaptation...
+Client client_1 trained. Avg Loss: 0.5182
+Client client_2: Performing local training and on-device adaptation...
+Client client_2 trained. Avg Loss: 0.5216
+Server aggregated model updates.
+
+--- Global Model Evaluation after Round 5 ---
+Global model evaluation: Accuracy = 71.30%
+
+Federated Learning simulation complete.
+
+--- Phase 3.2: Privacy Preservation ---
+Applying Differential Privacy (placeholder)...
+Applying Differential Privacy (placeholder: epsilon=1.0).
+Differential Privacy applied (placeholder).
+
+--- Phase 3.3: Poisoning Defense and Robust Aggregation ---
+Applying Robust Aggregation (placeholder)...
+Applying Robust Aggregation (placeholder: method=krum).
+Robust Aggregation applied (placeholder).
+
+--- Phase 3.4: Communication Efficiency ---
+Applying Communication Efficiency (placeholder)...
+Applying Communication Efficiency (placeholder: compression_ratio=0.1).
+Communication Efficiency applied (placeholder).
+
+--- Phase 3.5: Fairness in Federated Models ---
+Monitoring Fairness in Federated Models (placeholder)...
+Monitoring Federated Fairness (placeholder: metric=f1_score_parity).
+  Dummy fairness score: 0.64
+Fairness Monitoring complete (placeholder).
+
+--- Phase 4: Explainable AI (XAI) and LLM Integration ---
+Step 4.1: Built-in XAI (Feature Importance)...
+Generating feature importance (placeholder: random values).
+Top 5 Feature Importance Scores:
+- feature_diyabetik_ketoasidoz: 0.0073
+- feature_alt_üriner_sistem_taşı: 0.0073
+- feature_akut_böbrek_yetmezliği: 0.0073
+- feature_aritmi: 0.0073
+- feature_baş_dönmesi: 0.0072
+
+Step 4.2: LLM-Enhanced Explanation Module...
+The AI system triaged the patient to: Sarı Alan (Yellow Area - Urgent).
+Key factors influencing this decision include:
+- feature_diyabetik_ketoasidoz (Importance: 0.007)
+- feature_alt_üriner_sistem_taşı (Importance: 0.007)
+- feature_akut_böbrek_yetmezliği (Importance: 0.007)
+- feature_aritmi (Importance: 0.007)
+- feature_baş_dönmesi (Importance: 0.007)
+
+(This explanation is a placeholder and would be generated by a sophisticated LLM based on medical knowledge and the identified features.)
+
+Step 4.3: Synthetic Rare Case Generation (Conceptual - not implemented here)...
+This would involve using LLMs (e.g., GPT-4o) to generate new synthetic patient records for stress-testing.
+
+Step 4.4: Real-Time Interpretability of Boolean Rule Chains...
+Extracting Boolean Rule Chains (placeholder: dummy rules).
+Extracted Boolean Rules:
+- IF (feature_goguste_baski_hissi == 1) AND (feature_solunum_sayisi > 0.8) THEN Triage = Kırmızı Alan
+- IF (feature_ates > 0.5) AND (feature_ishal == 1) THEN Triage = Sarı Alan
+- IF (feature_bas_agrisi == 1) AND (feature_yorgunluk == 0) THEN Triage = Yeşil Alan
+
+--- Proceeding to Phase 5: Comprehensive Evaluation and Open Science (Not yet implemented) ---
