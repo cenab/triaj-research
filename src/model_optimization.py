@@ -4,57 +4,143 @@ import torch.nn.functional as F # Added import for F
 import torch.nn.utils.prune as prune
 import torch.quantization
 
-def apply_quantization(model, backend='qnnpack'): # Reverted to 'qnnpack' for ARM CPUs
+def apply_quantization(model, backend='auto', calibration_data=None):
     """
-    Applies post-training static quantization to the model.
+    Applies post-training static quantization to the model with improved backend detection.
     
     Args:
         model (nn.Module): The PyTorch model to quantize.
-        backend (str): Quantization backend (e.g., 'qnnpack', 'fbgemm', 'x86').
-                       'qnnpack' is generally recommended for ARM CPUs (like Raspberry Pi).
+        backend (str): Quantization backend ('auto', 'qnnpack', 'fbgemm', 'x86').
+                       'auto' will automatically detect the best backend.
+        calibration_data (tuple): Optional calibration data (numerical, boolean, temporal).
     
     Returns:
-        nn.Module: The quantized model.
+        nn.Module: The quantized model, or original model if quantization fails.
     """
-    model.eval() # Set model to evaluation mode
-    model.to('cpu') # Ensure model is on CPU for quantization
+    try:
+        import copy
+        
+        # Create a copy to avoid modifying the original model
+        model_copy = copy.deepcopy(model)
+        model_copy.eval()
+        model_copy.to('cpu')
+        
+        # Auto-detect best backend
+        if backend == 'auto':
+            backend = _detect_quantization_backend()
+        
+        print(f"Applying quantization with backend: {backend}")
+        
+        # Check if backend is supported
+        if not torch.backends.quantized.is_available():
+            print("Warning: Quantization backend not available. Returning original model.")
+            return model
+        
+        # Set quantization configuration
+        try:
+            model_copy.qconfig = torch.quantization.get_default_qconfig(backend)
+        except Exception as e:
+            print(f"Warning: Failed to set qconfig for backend {backend}: {e}")
+            # Fallback to default qconfig
+            model_copy.qconfig = torch.quantization.default_qconfig
+        
+        # Prepare the model for quantization
+        torch.quantization.prepare(model_copy, inplace=True)
+        
+        # Calibrate the model
+        print("Calibrating model for quantization...")
+        if calibration_data is not None:
+            numerical_data, boolean_data, temporal_data = calibration_data
+        else:
+            # Generate dummy calibration data
+            num_samples = 50  # Increased for better calibration
+            num_numerical = 7
+            num_boolean = 268
+            num_temporal = 3
+            numerical_data = torch.randn(num_samples, num_numerical)
+            boolean_data = torch.randint(0, 2, (num_samples, num_boolean)).float()
+            temporal_data = torch.randn(num_samples, num_temporal)
+        
+        # Run calibration
+        with torch.no_grad():
+            for i in range(0, len(numerical_data), 10):  # Process in batches
+                batch_num = numerical_data[i:i+10]
+                batch_bool = boolean_data[i:i+10]
+                batch_temp = temporal_data[i:i+10]
+                try:
+                    _ = model_copy(batch_num, batch_bool, batch_temp)
+                except Exception as e:
+                    print(f"Warning: Calibration batch {i//10} failed: {e}")
+                    continue
+        
+        print("Calibration complete.")
+        
+        # Convert the model to quantized version
+        quantized_model = torch.quantization.convert(model_copy, inplace=False)
+        
+        # Verify the quantized model works
+        try:
+            with torch.no_grad():
+                test_num = torch.randn(1, 7)
+                test_bool = torch.randint(0, 2, (1, 268)).float()
+                test_temp = torch.randn(1, 3)
+                _ = quantized_model(test_num, test_bool, test_temp)
+            print("Quantization successful!")
+            return quantized_model
+        except Exception as e:
+            print(f"Warning: Quantized model verification failed: {e}")
+            return model
+            
+    except Exception as e:
+        print(f"Error during quantization: {e}")
+        print("Returning original model.")
+        return model
+
+def _detect_quantization_backend():
+    """
+    Automatically detect the best quantization backend for the current system.
     
-    # Fuse modules where applicable (e.g., Conv + ReLU, Linear + ReLU)
-    # This is crucial for effective quantization
-    # For our current model, we have BatchNorm after Linear, so fusion might be less direct
-    # but we can still prepare for it.
+    Returns:
+        str: The best available backend.
+    """
+    import platform
     
-    # Example fusion for Linear + BatchNorm + ReLU (if applicable)
-    # For simplicity, we'll just prepare for quantization directly on the model
+    # Check available backends
+    available_backends = []
     
-    # Specify quantization configuration
-    model.qconfig = torch.quantization.get_default_qconfig(backend)
+    try:
+        if torch.backends.quantized.engine == 'fbgemm' or hasattr(torch.backends.quantized, 'fbgemm'):
+            available_backends.append('fbgemm')
+    except:
+        pass
     
-    # Prepare the model for quantization. This inserts observers and fake_quant modules.
-    torch.quantization.prepare(model, inplace=True)
+    try:
+        if torch.backends.quantized.engine == 'qnnpack' or hasattr(torch.backends.quantized, 'qnnpack'):
+            available_backends.append('qnnpack')
+    except:
+        pass
     
-    # Calibrate the model (run inference on a representative dataset)
-    # In a real scenario, you would pass a calibration dataset here.
-    # For demonstration, we'll just call a dummy forward pass.
-    # You need to replace this with actual data calibration.
-    print("Calibrating model for quantization (using dummy data)...")
-    # Assuming dummy data has the same structure as model_architecture.py example
-    num_samples = 10
-    num_numerical = 7
-    num_boolean = 268 # Adjusted based on main.py output
-    num_temporal = 3
-    dummy_numerical_data = torch.randn(num_samples, num_numerical)
-    dummy_boolean_data = torch.randint(0, 2, (num_samples, num_boolean)).float()
-    dummy_temporal_data = torch.randn(num_samples, num_temporal)
+    # Platform-specific backend selection
+    system = platform.system().lower()
+    machine = platform.machine().lower()
     
-    with torch.no_grad():
-        model(dummy_numerical_data, dummy_boolean_data, dummy_temporal_data)
-    print("Calibration complete.")
+    if 'arm' in machine or 'aarch64' in machine:
+        # ARM processors (including Apple Silicon, Raspberry Pi)
+        if 'qnnpack' in available_backends:
+            return 'qnnpack'
+    elif 'x86' in machine or 'amd64' in machine:
+        # x86/x64 processors
+        if 'fbgemm' in available_backends:
+            return 'fbgemm'
+        elif 'qnnpack' in available_backends:
+            return 'qnnpack'
     
-    # Convert the model to a quantized version
-    torch.quantization.convert(model, inplace=True)
-    
-    return model
+    # Fallback
+    if available_backends:
+        return available_backends[0]
+    else:
+        print("Warning: No quantization backends detected. Using default.")
+        return 'fbgemm'  # Default fallback
 
 def apply_pruning(model, amount=0.5):
     """

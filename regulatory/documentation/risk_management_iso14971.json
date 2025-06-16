@@ -1,0 +1,100 @@
+{
+  "risk_management_process": {
+    "scope": "FairTriEdge-FL AI/ML medical device software",
+    "risk_management_team": [
+      "Clinical experts (emergency medicine physicians)",
+      "Software engineers and AI/ML specialists",
+      "Regulatory affairs specialists",
+      "Quality assurance professionals"
+    ]
+  },
+  "hazard_identification": [
+    {
+      "hazard_id": "H001",
+      "hazard": "Incorrect triage recommendation - Under-triage",
+      "potential_harm": "Delayed treatment for high-acuity patients",
+      "severity": "Critical",
+      "probability": "Remote",
+      "risk_level": "Medium",
+      "risk_controls": [
+        "Clinical oversight required for all AI recommendations",
+        "Alert system for low-confidence predictions",
+        "Continuous monitoring of under-triage rates"
+      ]
+    },
+    {
+      "hazard_id": "H002",
+      "hazard": "Incorrect triage recommendation - Over-triage",
+      "potential_harm": "Resource misallocation and patient anxiety",
+      "severity": "Minor",
+      "probability": "Probable",
+      "risk_level": "Low",
+      "risk_controls": [
+        "Clinical validation of high-acuity recommendations",
+        "Resource utilization monitoring",
+        "Provider education on AI limitations"
+      ]
+    },
+    {
+      "hazard_id": "H003",
+      "hazard": "Algorithmic bias",
+      "potential_harm": "Disparate care quality across patient populations",
+      "severity": "Serious",
+      "probability": "Remote",
+      "risk_level": "Medium",
+      "risk_controls": [
+        "Bias testing across demographic groups",
+        "Fairness monitoring in production",
+        "Regular model retraining and validation"
+      ]
+    },
+    {
+      "hazard_id": "H004",
+      "hazard": "Privacy breach",
+      "potential_harm": "Unauthorized disclosure of patient information",
+      "severity": "Serious",
+      "probability": "Remote",
+      "risk_level": "Medium",
+      "risk_controls": [
+        "Differential privacy implementation",
+        "Federated learning (no raw data sharing)",
+        "Encryption and access controls"
+      ]
+    },
+    {
+      "hazard_id": "H005",
+      "hazard": "System unavailability",
+      "potential_harm": "Disruption of emergency department workflow",
+      "severity": "Minor",
+      "probability": "Occasional",
+      "risk_level": "Low",
+      "risk_controls": [
+        "Redundant system deployment",
+        "Graceful degradation to manual triage",
+        "System monitoring and alerting"
+      ]
+    }
+  ],
+  "risk_control_measures": {
+    "inherent_safety": [
+      "Conservative algorithm design favoring over-triage",
+      "Confidence thresholds for recommendations",
+      "Fail-safe defaults to manual triage"
+    ],
+    "protective_measures": [
+      "Clinical decision support interface design",
+      "User training and competency requirements",
+      "Audit trails and logging"
+    ],
+    "information_for_safety": [
+      "User manual and training materials",
+      "Contraindications and limitations",
+      "Performance characteristics and validation data"
+    ]
+  },
+  "residual_risk_evaluation": {
+    "overall_risk_acceptability": "Acceptable with risk controls",
+    "benefit_risk_analysis": "Clinical benefits outweigh residual risks",
+    "risk_management_report": "Comprehensive risk analysis completed"
+  }
+}

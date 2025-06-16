@@ -1,0 +1,53 @@
+{
+  "quality_management_system": {
+    "scope": "Design, development, and manufacture of AI/ML medical device software",
+    "quality_policy": "Commitment to patient safety and regulatory compliance",
+    "quality_objectives": [
+      "Achieve >95% clinical agreement with expert triage decisions",
+      "Maintain <1% critical under-triage rate",
+      "Ensure fairness across all patient demographics",
+      "Comply with all applicable regulatory requirements"
+    ]
+  },
+  "design_controls": {
+    "design_planning": {
+      "design_and_development_plan": "Systematic approach to AI/ML development",
+      "design_team_responsibilities": "Multidisciplinary team with defined roles",
+      "design_review_schedule": "Regular design reviews at key milestones"
+    },
+    "design_inputs": [
+      "Clinical requirements from emergency medicine experts",
+      "Regulatory requirements (FDA, ISO standards)",
+      "User needs and usability requirements",
+      "Performance and safety requirements"
+    ],
+    "design_outputs": [
+      "Software design specification",
+      "Algorithm architecture and parameters",
+      "User interface design",
+      "Risk management documentation"
+    ],
+    "design_verification": [
+      "Algorithm performance testing",
+      "Software verification testing",
+      "Usability testing",
+      "Cybersecurity testing"
+    ],
+    "design_validation": [
+      "Clinical validation studies",
+      "Real-world performance evaluation",
+      "User acceptance testing",
+      "Post-market surveillance"
+    ]
+  },
+  "document_control": {
+    "document_management_system": "Version-controlled repository",
+    "document_approval_process": "Multi-level review and approval",
+    "change_control": "Formal change control process for all modifications"
+  },
+  "corrective_and_preventive_actions": {
+    "capa_process": "Systematic investigation and resolution of quality issues",
+    "trend_analysis": "Regular analysis of quality metrics and performance data",
+    "continuous_improvement": "Ongoing process improvement initiatives"
+  }
+}

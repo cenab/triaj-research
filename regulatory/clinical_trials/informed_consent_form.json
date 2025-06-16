@@ -1,0 +1,61 @@
+{
+  "document_title": "Informed Consent for Research Participation",
+  "study_title": "FairTriEdge-FL Clinical Validation Study",
+  "protocol_number": "FTE-FL-001",
+  "version_date": "2025-06-16T01:26:10.248561",
+  "sections": {
+    "introduction": {
+      "text": "You are being asked to participate in a research study to evaluate an artificial intelligence (AI) system that helps healthcare providers make triage decisions in the emergency department. This consent form explains the study and your rights as a research participant."
+    },
+    "purpose_of_study": {
+      "text": "The purpose of this study is to test whether an AI computer system can help emergency department staff make better and faster decisions about how urgently patients need to be seen by a doctor. The AI system will analyze information about your symptoms and vital signs to suggest whether you should be seen immediately, soon, or can wait longer."
+    },
+    "study_procedures": {
+      "text": "If you agree to participate:\n\u2022 The AI system will analyze your medical information when you arrive at the emergency department\n\u2022 Your regular medical care will not change - doctors and nurses will still make all decisions about your care\n\u2022 We will collect information about your emergency department visit and follow up 30 days later\n\u2022 Your participation will not delay or change your medical treatment"
+    },
+    "risks_and_discomforts": {
+      "text": "The risks of participating in this study are minimal:\n\u2022 There is a small risk that the AI system could make an incorrect recommendation, but your doctors and nurses will always make the final decisions about your care\n\u2022 There is a risk of loss of privacy, but we have strong protections in place to keep your information secure\n\u2022 You may receive follow-up calls or surveys about your experience"
+    },
+    "benefits": {
+      "text": "You may not receive any direct benefit from participating in this study. However, the information learned may help improve emergency department care for future patients by making triage decisions more accurate and consistent."
+    },
+    "privacy_and_confidentiality": {
+      "text": "Your privacy is very important to us:\n\u2022 Your medical information will be kept confidential according to HIPAA regulations\n\u2022 The AI system uses advanced privacy protection techniques that prevent identification of individual patients\n\u2022 Only authorized research staff will have access to your identifiable information\n\u2022 Research results will be published without any information that could identify you"
+    },
+    "voluntary_participation": {
+      "text": "Your participation in this research is entirely voluntary:\n\u2022 You can choose not to participate without affecting your medical care\n\u2022 You can withdraw from the study at any time\n\u2022 Your decision will not affect your relationship with your healthcare providers or this hospital"
+    },
+    "contact_information": {
+      "principal_investigator": {
+        "name": "Dr. [Principal Investigator Name]",
+        "phone": "[Phone Number]",
+        "email": "[Email Address]"
+      },
+      "irb_contact": {
+        "name": "Institutional Review Board",
+        "phone": "[IRB Phone Number]",
+        "email": "[IRB Email Address]"
+      }
+    },
+    "consent_statement": {
+      "text": "I have read this consent form and have had the opportunity to ask questions. I understand that my participation is voluntary and that I can withdraw at any time. I agree to participate in this research study."
+    }
+  },
+  "signature_section": {
+    "participant_signature": {
+      "signature_line": "Participant Signature",
+      "date_line": "Date",
+      "print_name_line": "Print Name"
+    },
+    "witness_signature": {
+      "signature_line": "Witness Signature (if required)",
+      "date_line": "Date",
+      "print_name_line": "Print Name"
+    },
+    "investigator_signature": {
+      "signature_line": "Person Obtaining Consent",
+      "date_line": "Date",
+      "print_name_line": "Print Name and Title"
+    }
+  }
+}

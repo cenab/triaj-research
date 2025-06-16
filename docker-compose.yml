@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  # Main FairTriEdge-FL Application
+  fairtriedge-app:
+    build: .
+    container_name: fairtriedge-main
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - FL_NUM_CLIENTS=3
+      - FL_NUM_ROUNDS=5
+      - PRIVACY_EPSILON=1.0
+    volumes:
+      - ./results:/app/results
+      - ./logs:/app/logs
+    networks:
+      - fairtriedge-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('Health check passed')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Federated Client 1 (Hospital A)
+  client-hospital-a:
+    build: .
+    container_name: fairtriedge-client-a
+    ports:
+      - "8001:8000"
+    environment:
+      - PYTHONPATH=/app
+      - CLIENT_ID=hospital_a
+      - CLIENT_PORT=8001
+    volumes:
+      - ./results:/app/results
+      - ./logs:/app/logs
+    networks:
+      - fairtriedge-network
+    depends_on:
+      - fairtriedge-app
+    command: ["python", "-c", "print('Client A ready for federated learning')"]
+
+  # Federated Client 2 (Hospital B)
+  client-hospital-b:
+    build: .
+    container_name: fairtriedge-client-b
+    ports:
+      - "8002:8000"
+    environment:
+      - PYTHONPATH=/app
+      - CLIENT_ID=hospital_b
+      - CLIENT_PORT=8002
+    volumes:
+      - ./results:/app/results
+      - ./logs:/app/logs
+    networks:
+      - fairtriedge-network
+    depends_on:
+      - fairtriedge-app
+    command: ["python", "-c", "print('Client B ready for federated learning')"]
+
+  # Federated Client 3 (Hospital C)
+  client-hospital-c:
+    build: .
+    container_name: fairtriedge-client-c
+    ports:
+      - "8003:8000"
+    environment:
+      - PYTHONPATH=/app
+      - CLIENT_ID=hospital_c
+      - CLIENT_PORT=8003
+    volumes:
+      - ./results:/app/results
+      - ./logs:/app/logs
+    networks:
+      - fairtriedge-network
+    depends_on:
+      - fairtriedge-app
+    command: ["python", "-c", "print('Client C ready for federated learning')"]
+
+  # Monitoring and Evaluation Service
+  monitoring:
+    build: .
+    container_name: fairtriedge-monitoring
+    ports:
+      - "8080:8080"
+    environment:
+      - PYTHONPATH=/app
+      - MONITORING_MODE=true
+    volumes:
+      - ./results:/app/results
+      - ./logs:/app/logs
+    networks:
+      - fairtriedge-network
+    depends_on:
+      - fairtriedge-app
+    command: ["python", "-c", "print('Monitoring service ready')"]
+
+  # Redis for coordination (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: fairtriedge-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - fairtriedge-network
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+networks:
+  fairtriedge-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  redis_data:

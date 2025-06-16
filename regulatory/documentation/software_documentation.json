@@ -1,0 +1,40 @@
+{
+  "software_level_of_concern": "Moderate",
+  "software_documentation_level": "Enhanced",
+  "required_documentation": {
+    "level_of_concern_documentation": {
+      "software_description": "AI/ML algorithm for emergency triage decision support",
+      "intended_use_and_indications": "Assist healthcare providers in emergency department triage",
+      "device_hazard_analysis": "Risk analysis of incorrect triage recommendations",
+      "software_requirements_specification": "Functional and performance requirements",
+      "architecture_design_chart": "System architecture and data flow diagrams",
+      "software_design_specification": "Detailed design of AI/ML algorithms"
+    },
+    "enhanced_documentation": {
+      "detailed_design_specification": "Neural network architecture and training procedures",
+      "traceability_analysis": "Requirements to design to testing traceability",
+      "complete_testing_documentation": "Verification and validation test protocols and results",
+      "revision_level_history": "Version control and change management records"
+    }
+  },
+  "ai_ml_specific_documentation": {
+    "algorithm_design": {
+      "model_architecture": "Multimodal deep neural network",
+      "training_methodology": "Federated learning with differential privacy",
+      "feature_engineering": "Clinical feature extraction and normalization",
+      "validation_methodology": "Cross-validation and holdout testing"
+    },
+    "data_management": {
+      "training_data_description": "De-identified emergency department patient records",
+      "data_quality_assurance": "Data validation and cleaning procedures",
+      "bias_assessment": "Demographic and clinical bias evaluation",
+      "data_governance": "Privacy protection and regulatory compliance"
+    },
+    "performance_assessment": {
+      "accuracy_metrics": "Sensitivity, specificity, PPV, NPV for each triage category",
+      "fairness_metrics": "Performance across demographic subgroups",
+      "robustness_testing": "Performance under various clinical scenarios",
+      "uncertainty_quantification": "Confidence intervals and prediction uncertainty"
+    }
+  }
+}

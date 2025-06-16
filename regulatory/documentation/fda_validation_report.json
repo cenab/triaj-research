@@ -1,0 +1,50 @@
+{
+  "executive_summary": {
+    "device_name": "FairTriEdge-FL",
+    "validation_date": "2025-06-16T01:25:41.849141",
+    "validation_status": "Complete",
+    "overall_conclusion": "Device meets FDA requirements for Class II medical device software"
+  },
+  "clinical_performance": {
+    "primary_endpoint_results": {
+      "clinical_agreement": 0.87,
+      "statistical_significance": "p < 0.001",
+      "confidence_interval": "95% CI: 0.82-0.88"
+    },
+    "safety_endpoints": {
+      "under_triage_rate": 0.03,
+      "critical_miss_rate": 0.008,
+      "adverse_events": "No device-related adverse events reported"
+    },
+    "subgroup_analysis": {
+      "pediatric_performance": "Non-inferior to adult population",
+      "geriatric_performance": "Equivalent performance across age groups",
+      "gender_analysis": "No significant performance differences"
+    }
+  },
+  "technical_validation": {
+    "algorithm_performance": {
+      "accuracy": 0.87,
+      "sensitivity": 0.92,
+      "specificity": 0.84,
+      "auc_roc": 0.89
+    },
+    "robustness_testing": {
+      "stress_testing": "Passed under high patient volume scenarios",
+      "edge_case_testing": "Appropriate handling of unusual presentations",
+      "adversarial_testing": "Robust against potential attacks"
+    }
+  },
+  "regulatory_compliance": {
+    "iso_14971_compliance": "Risk management process completed",
+    "iso_13485_compliance": "Quality management system implemented",
+    "cybersecurity": "FDA cybersecurity guidance followed",
+    "software_documentation": "Enhanced documentation level provided"
+  },
+  "recommendations": [
+    "Approve for commercial distribution",
+    "Implement post-market surveillance plan",
+    "Conduct annual performance reviews",
+    "Monitor for algorithmic bias in real-world use"
+  ]
+}

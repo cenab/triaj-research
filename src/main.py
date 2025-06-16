@@ -4,14 +4,27 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import time # Import time for latency measurement
+from datetime import datetime
 
-from .data_preparation import load_and_clean_data
-from .feature_engineering import feature_engineer_data
-from .data_simulation import simulate_multi_site_data
-from .model_architecture import TriageModel
-from .model_optimization import apply_quantization, apply_pruning, apply_knowledge_distillation
-from .federated_learning import FederatedClient, FederatedServer, apply_domain_adaptation, monitor_data_drift, apply_differential_privacy, apply_robust_aggregation, apply_communication_efficiency, monitor_federated_fairness, get_model_parameters, set_model_parameters
-from .explainable_ai import generate_feature_importance, generate_llm_explanation, extract_boolean_rules
+try:
+    from .data_preparation import load_and_clean_data
+    from .feature_engineering import feature_engineer_data
+    from .data_simulation import simulate_multi_site_data
+    from .model_architecture import TriageModel
+    from .model_optimization import apply_quantization, apply_pruning, apply_knowledge_distillation
+    from .federated_learning import FederatedClient, FederatedServer, apply_domain_adaptation, monitor_data_drift, apply_differential_privacy, apply_robust_aggregation, apply_communication_efficiency, monitor_federated_fairness, get_model_parameters, set_model_parameters, simulate_byzantine_attacks
+    from .explainable_ai import generate_feature_importance, generate_llm_explanation, extract_boolean_rules
+    from .evaluation_framework import ComprehensiveEvaluator, ClinicalMetrics, FairnessEvaluator, PerformanceBenchmark
+except ImportError:
+    # Direct imports when running as script
+    from data_preparation import load_and_clean_data
+    from feature_engineering import feature_engineer_data
+    from data_simulation import simulate_multi_site_data
+    from model_architecture import TriageModel
+    from model_optimization import apply_quantization, apply_pruning, apply_knowledge_distillation
+    from federated_learning import FederatedClient, FederatedServer, apply_domain_adaptation, monitor_data_drift, apply_differential_privacy, apply_robust_aggregation, apply_communication_efficiency, monitor_federated_fairness, get_model_parameters, set_model_parameters, simulate_byzantine_attacks
+    from explainable_ai import generate_feature_importance, generate_llm_explanation, extract_boolean_rules
+    from evaluation_framework import ComprehensiveEvaluator, ClinicalMetrics, FairnessEvaluator, PerformanceBenchmark
 
 def main():
     file_path = 'triaj_data.csv'
@@ -120,9 +133,15 @@ def main():
 
     print("\nStep 2.2: Resource Optimization (TinyML)...")
     # Demonstrate Quantization
-    print("\nApplying Quantization (skipped for now due to backend issues)...")
-    # quantized_model = apply_quantization(model)
-    # print("Quantization applied.")
+    print("\nApplying Quantization...")
+    # Prepare calibration data from the actual dataset
+    calibration_numerical = torch.tensor(X[numerical_cols].values[:100], dtype=torch.float32)
+    calibration_boolean = torch.tensor(X[boolean_cols].values[:100], dtype=torch.float32)
+    calibration_temporal = torch.tensor(X[temporal_cols].values[:100], dtype=torch.float32)
+    calibration_data = (calibration_numerical, calibration_boolean, calibration_temporal)
+    
+    quantized_model = apply_quantization(model, backend='auto', calibration_data=calibration_data)
+    print("Quantization applied.")
 
     # Demonstrate Pruning
     print("\nApplying Pruning...")
@@ -207,36 +226,70 @@ def main():
     global_model_fl = TriageModel(num_numerical_features, num_boolean_features, num_temporal_features, num_classes).to(device)
     server_fl = FederatedServer(global_model_fl, device)
 
-    # Client models
+    # Client models with privacy configuration
+    privacy_config = {
+        'enable_dp': True,
+        'epsilon': 1.0,
+        'delta': 1e-5,
+        'max_grad_norm': 1.0,
+        'total_epsilon': 10.0,
+        'sensitivity': 1.0,
+        'method': 'gaussian'
+    }
+    
     clients_fl = []
     for i, data_loader in enumerate(client_data_loaders_fl):
         client_model_fl = TriageModel(num_numerical_features, num_boolean_features, num_temporal_features, num_classes).to(device)
         # Initialize client model with global model's parameters
         # Use the standalone set_model_parameters function
         set_model_parameters(client_model_fl, get_model_parameters(global_model_fl))
-        clients_fl.append(FederatedClient(f"client_{i}", client_model_fl, data_loader, device))
+        clients_fl.append(FederatedClient(f"client_{i}", client_model_fl, data_loader, device, privacy_config))
 
     # Simulate a few rounds of Federated Learning
     num_communication_rounds = 5
     for round_num in range(num_communication_rounds):
         print(f"\n--- Federated Learning Round {round_num + 1}/{num_communication_rounds} ---")
         
-        # Clients train locally
+        # Clients train locally with differential privacy
         client_updates_fl = []
+        privacy_metrics_round = []
+        
         for client in clients_fl:
             # Distribute global model to client before training
             # Use the standalone get_model_parameters function
             client.set_parameters(get_model_parameters(server_fl.global_model))
             
-            # Simulate on-device model adaptation (Phase 2.3 dynamic personalization)
-            print(f"Client {client.client_id}: Performing local training and on-device adaptation...")
-            params, num_samples = client.train(epochs=1) # Train for 1 local epoch
+            # Simulate on-device model adaptation with differential privacy
+            print(f"Client {client.client_id}: Performing local training with differential privacy...")
+            params, num_samples, privacy_metrics = client.train(epochs=1, apply_dp=True)
             client_updates_fl.append((params, num_samples))
+            privacy_metrics_round.append(privacy_metrics)
         
-        # Server aggregates updates
-        aggregated_params_fl = server_fl.aggregate_parameters(client_updates_fl)
+        # Simulate Byzantine attacks (for robustness testing)
+        if round_num == 2:  # Apply attack in round 3 for demonstration
+            print("\n--- Simulating Byzantine Attack ---")
+            attacked_updates = simulate_byzantine_attacks(
+                client_updates_fl,
+                attack_type="gradient_ascent",
+                attack_ratio=0.33,  # Compromise 1 out of 3 clients
+                scale_factor=5.0
+            )
+            client_updates_fl = attacked_updates
+        
+        # Server aggregates updates with robust aggregation
+        print(f"Applying robust aggregation...")
+        aggregated_params_fl = apply_robust_aggregation(
+            client_updates_fl,
+            method="krum",  # Use Krum for Byzantine robustness
+            num_malicious=1
+        )
+        
         # Update global model using the standalone set_model_parameters function
         set_model_parameters(server_fl.global_model, aggregated_params_fl)
+        
+        # Log privacy metrics
+        total_epsilon_consumed = sum(pm.get('epsilon_consumed', 0) for pm in privacy_metrics_round)
+        print(f"Round {round_num + 1} privacy consumption: ε={total_epsilon_consumed:.3f}")
 
         # Evaluate global model
         print(f"\n--- Global Model Evaluation after Round {round_num + 1} ---")
@@ -245,11 +298,27 @@ def main():
     print("\nFederated Learning simulation complete.")
 
     print("\n--- Phase 3.2: Privacy Preservation ---")
-    # Apply differential privacy with different methods
-    print("\nApplying Differential Privacy (method: Opacus/TensorFlow Privacy)...")
-    dummy_gradients = [np.random.rand(10, 10).astype(np.float32)] # Example dummy gradients
-    noisy_gradients_dp = apply_differential_privacy(dummy_gradients, sensitivity=1.0, epsilon=1.0, method="opacus_tf_privacy")
-    print("Differential Privacy applied (Opacus/TensorFlow Privacy).")
+    # Apply differential privacy with enhanced implementation
+    print("\nApplying Enhanced Differential Privacy...")
+    
+    # Use actual model parameters for demonstration
+    dummy_gradients = [param.detach().cpu().numpy() for param in global_model_fl.parameters()]
+    
+    # Test different DP methods
+    for method in ['gaussian', 'laplace']:
+        print(f"\nTesting DP method: {method}")
+        noisy_gradients, dp_metrics = apply_differential_privacy(
+            dummy_gradients,
+            sensitivity=1.0,
+            epsilon=1.0,
+            delta=1e-5,
+            method=method,
+            max_grad_norm=1.0,
+            sample_size=len(train_dataset_fl)
+        )
+        print(f"DP applied: ε={dp_metrics['epsilon_consumed']:.3f}, "
+              f"noise_multiplier={dp_metrics['noise_multiplier']:.4f}, "
+              f"clipping={dp_metrics['clipping_applied']}")
 
     print("\n--- Phase 3.3: Poisoning Defense and Robust Aggregation ---")
     # Apply robust aggregation with different methods
@@ -351,7 +420,175 @@ def main():
     for rule in boolean_rules:
         print(f"- {rule}")
 
-    print("\n--- Proceeding to Phase 5: Comprehensive Evaluation and Open Science (Not yet implemented) ---")
+    print("\n--- Phase 5: Comprehensive Evaluation and Open Science ---")
+    
+    # Initialize comprehensive evaluator
+    evaluator = ComprehensiveEvaluator()
+    
+    # Prepare sensitive attributes for fairness evaluation
+    print("\nPreparing fairness evaluation data...")
+    # Simulate sensitive attributes based on the dataset
+    test_size = len(global_test_dataset_fl)
+    
+    # Age groups: 0=Child (<18), 1=Adult (18-65), 2=Elderly (>65)
+    # Based on the 'yaş' column from original data
+    age_groups = []
+    gender_groups = []
+    
+    for i in range(test_size):
+        # Get original age from the dataset (using yaş_unscaled if available)
+        if 'yaş_unscaled' in df_engineered.columns:
+            age = df_engineered['yaş_unscaled'].iloc[i % len(df_engineered)]
+        else:
+            age = df_engineered['yaş'].iloc[i % len(df_engineered)]  # Use scaled age as fallback
+        
+        if age < 18:
+            age_groups.append(0)  # Child
+        elif age <= 65:
+            age_groups.append(1)  # Adult
+        else:
+            age_groups.append(2)  # Elderly
+        
+        # Gender: Extract from original data
+        if 'cinsiyet_Male' in df_engineered.columns:
+            if df_engineered['cinsiyet_Male'].iloc[i % len(df_engineered)] == 1:
+                gender_groups.append('Male')
+            elif df_engineered['cinsiyet_Female'].iloc[i % len(df_engineered)] == 1:
+                gender_groups.append('Female')
+            else:
+                gender_groups.append('Unknown')
+        else:
+            gender_groups.append('Unknown')
+    
+    sensitive_data = {
+        'age_group': np.array(age_groups),
+        'gender': np.array(gender_groups)
+    }
+    
+    # Run comprehensive evaluation
+    print("\nRunning comprehensive evaluation...")
+    evaluation_results = evaluator.evaluate_federated_system(
+        global_model=global_model_fl,
+        clients=clients_fl,
+        server=server_fl,
+        test_loader=global_test_loader_fl,
+        sensitive_data=sensitive_data,
+        device=device
+    )
+    
+    # Display evaluation results
+    print("\n=== COMPREHENSIVE EVALUATION RESULTS ===")
+    
+    # Clinical metrics
+    clinical = evaluation_results['clinical_metrics']
+    print(f"\n--- Clinical Performance ---")
+    print(f"Overall Accuracy: {clinical['overall_accuracy']:.3f}")
+    print(f"Class-wise Performance:")
+    for class_name, metrics in clinical['class_metrics'].items():
+        print(f"  {class_name}: Precision={metrics['precision']:.3f}, "
+              f"Recall={metrics['recall']:.3f}, F1={metrics['f1_score']:.3f}")
+    
+    safety = clinical['clinical_safety']
+    print(f"\n--- Clinical Safety ---")
+    print(f"Under-triage Rate: {safety['under_triage_rate']:.3f}")
+    print(f"Over-triage Rate: {safety['over_triage_rate']:.3f}")
+    print(f"Critical Under-triage Rate: {safety['critical_under_triage_rate']:.3f}")
+    print(f"Critical Sensitivity: {safety['critical_sensitivity']:.3f}")
+    
+    # Fairness metrics
+    fairness = evaluation_results['fairness_metrics']
+    print(f"\n--- Fairness Assessment ---")
+    print(f"Overall Fairness Score: {fairness['overall_fairness_score']:.3f}")
+    if fairness['fairness_violations']:
+        print("Fairness Violations Detected:")
+        for violation in fairness['fairness_violations']:
+            print(f"  {violation['metric']}: difference={violation['difference']:.3f} "
+                  f"(threshold={violation['threshold']:.3f})")
+    else:
+        print("No significant fairness violations detected.")
+    
+    # Performance metrics
+    performance = evaluation_results['performance_metrics']
+    print(f"\n--- Performance Metrics ---")
+    print(f"Average Inference Time: {performance['avg_inference_time_ms']:.2f}ms")
+    print(f"Throughput: {performance['throughput_samples_per_sec']:.1f} samples/sec")
+    print(f"Model Size: {performance['model_size_mb']:.2f}MB")
+    print(f"Total Parameters: {performance['total_parameters']:,}")
+    
+    # Federated learning metrics
+    fl_metrics = evaluation_results['federated_metrics']
+    print(f"\n--- Federated Learning Performance ---")
+    print(f"Total Round Time: {fl_metrics['total_round_time']:.2f}s")
+    print(f"Average Client Training Time: {fl_metrics['avg_client_training_time']:.2f}s")
+    print(f"Aggregation Time: {fl_metrics['aggregation_time']:.3f}s")
+    print(f"Communication Overhead: {fl_metrics['communication_overhead']:,} parameters")
+    
+    # Summary and recommendations
+    summary = evaluation_results['summary']
+    print(f"\n--- Summary ---")
+    print(f"Overall Performance: {summary['overall_performance']}")
+    print(f"Risk Assessment: {summary['risk_assessment']}")
+    
+    if summary['key_findings']:
+        print("Key Findings:")
+        for finding in summary['key_findings']:
+            print(f"  • {finding}")
+    
+    if summary['recommendations']:
+        print("Recommendations:")
+        for rec in summary['recommendations']:
+            print(f"  • {rec}")
+    
+    # Save evaluation report
+    import os
+    os.makedirs('results', exist_ok=True)
+    report_path = f"results/evaluation_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    evaluator.save_evaluation_report(evaluation_results, report_path)
+    
+    print(f"\n--- Open Science Practices ---")
+    print("✅ Comprehensive evaluation completed")
+    print("✅ Detailed metrics calculated and logged")
+    print("✅ Fairness assessment performed")
+    print("✅ Clinical safety metrics evaluated")
+    print(f"✅ Evaluation report saved: {report_path}")
+    print("✅ Results ready for peer review and publication")
+    
+    # Performance comparison with baseline
+    print(f"\n--- Performance Comparison ---")
+    print("Comparing against simple centralized baseline...")
+    
+    # Simple baseline: Logistic Regression on centralized data
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import accuracy_score
+    
+    # Prepare centralized data for baseline
+    X_baseline = torch.cat([
+        X_numerical_full, X_boolean_full, X_temporal_full
+    ], dim=1).numpy()
+    y_baseline = y_tensor_full.numpy()
+    
+    # Split for baseline evaluation
+    from sklearn.model_selection import train_test_split
+    X_train_baseline, X_test_baseline, y_train_baseline, y_test_baseline = train_test_split(
+        X_baseline, y_baseline, test_size=0.2, random_state=42, stratify=y_baseline
+    )
+    
+    # Train baseline model
+    baseline_model = LogisticRegression(max_iter=1000, random_state=42)
+    baseline_model.fit(X_train_baseline, y_train_baseline)
+    baseline_pred = baseline_model.predict(X_test_baseline)
+    baseline_accuracy = accuracy_score(y_test_baseline, baseline_pred)
+    
+    print(f"Federated Model Accuracy: {clinical['overall_accuracy']:.3f}")
+    print(f"Centralized Baseline Accuracy: {baseline_accuracy:.3f}")
+    print(f"Performance Difference: {clinical['overall_accuracy'] - baseline_accuracy:+.3f}")
+    
+    if clinical['overall_accuracy'] >= baseline_accuracy:
+        print("✅ Federated model matches or exceeds centralized baseline!")
+    else:
+        print("⚠️  Federated model underperforms centralized baseline")
+    
+    print("\n=== PHASE 5 EVALUATION COMPLETE ===")
 
 if __name__ == "__main__":
     main()

@@ -45,8 +45,11 @@
     "epsilon": 1.0,
     "delta": 1e-5,
     "max_grad_norm": 1.0,
-    "noise_multiplier": null,
-    "method": "opacus"
+    "total_epsilon": 10.0,
+    "sensitivity": 1.0,
+    "method": "gaussian",
+    "privacy_accounting": true,
+    "supported_methods": ["gaussian", "laplace", "opacus"]
   },
   
   "robustness": {
@@ -55,6 +58,18 @@
     "byzantine_clients": 0,
     "trim_ratio": 0.1,
     "krum_f": 0,
+    
+    "byzantine_attacks": {
+      "enable_simulation": true,
+      "attack_types": ["label_flipping", "gradient_ascent", "gaussian_noise"],
+      "attack_ratio": 0.2,
+      "attack_round": 2,
+      "attack_parameters": {
+        "label_flipping": {"flip_probability": 0.5},
+        "gradient_ascent": {"scale_factor": 5.0},
+        "gaussian_noise": {"noise_std": 1.0}
+      }
+    },
     
     "data_drift_detection": {
       "enable": true,
@@ -134,7 +149,34 @@
       "stratified": true
     },
     "test_split": 0.2,
-    "validation_split": 0.1
+    "validation_split": 0.1,
+    
+    "comprehensive_evaluation": {
+      "enable": true,
+      "clinical_metrics": true,
+      "fairness_evaluation": true,
+      "performance_benchmarking": true,
+      "save_reports": true,
+      "report_format": "json"
+    },
+    
+    "clinical_safety": {
+      "under_triage_threshold": 0.1,
+      "critical_sensitivity_threshold": 0.9,
+      "safety_priority": "high"
+    },
+    
+    "fairness_thresholds": {
+      "overall_fairness_minimum": 0.8,
+      "group_difference_maximum": 0.1,
+      "sensitive_attributes": ["age_group", "gender"]
+    },
+    
+    "performance_requirements": {
+      "max_inference_time_ms": 100,
+      "min_throughput_samples_per_sec": 10,
+      "max_model_size_mb": 50
+    }
   },
   
   "optimization": {
@@ -142,9 +184,11 @@
     "techniques": ["quantization", "pruning", "knowledge_distillation"],
     
     "quantization": {
-      "enable": false,
-      "backend": "fbgemm",
-      "calibration_samples": 100
+      "enable": true,
+      "backend": "auto",
+      "calibration_samples": 100,
+      "fallback_on_error": true,
+      "supported_backends": ["auto", "fbgemm", "qnnpack"]
     },
     
     "pruning": {

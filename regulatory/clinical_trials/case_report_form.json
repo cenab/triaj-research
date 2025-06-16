@@ -1,0 +1,358 @@
+{
+  "form_title": "FairTriEdge-FL Clinical Study Case Report Form",
+  "version": "1.0",
+  "date": "2025-06-16T01:26:10.248561",
+  "sections": {
+    "patient_identification": {
+      "study_id": {
+        "type": "text",
+        "required": true,
+        "description": "Unique study identifier"
+      },
+      "site_id": {
+        "type": "text",
+        "required": true,
+        "description": "Study site identifier"
+      },
+      "enrollment_date": {
+        "type": "date",
+        "required": true,
+        "description": "Date of enrollment"
+      },
+      "consent_obtained": {
+        "type": "boolean",
+        "required": true,
+        "description": "Informed consent obtained"
+      }
+    },
+    "demographics": {
+      "age": {
+        "type": "integer",
+        "required": true,
+        "range": [
+          1,
+          120
+        ],
+        "units": "years"
+      },
+      "gender": {
+        "type": "select",
+        "required": true,
+        "options": [
+          "Male",
+          "Female",
+          "Other",
+          "Prefer not to answer"
+        ]
+      },
+      "race": {
+        "type": "select",
+        "required": false,
+        "options": [
+          "White",
+          "Black/African American",
+          "Asian",
+          "Native American",
+          "Pacific Islander",
+          "Other",
+          "Unknown"
+        ]
+      },
+      "ethnicity": {
+        "type": "select",
+        "required": false,
+        "options": [
+          "Hispanic/Latino",
+          "Not Hispanic/Latino",
+          "Unknown"
+        ]
+      },
+      "primary_language": {
+        "type": "text",
+        "required": false,
+        "description": "Primary language spoken"
+      }
+    },
+    "presentation_data": {
+      "arrival_time": {
+        "type": "datetime",
+        "required": true,
+        "description": "Time of arrival to ED"
+      },
+      "arrival_mode": {
+        "type": "select",
+        "required": true,
+        "options": [
+          "Walk-in",
+          "Private vehicle",
+          "Ambulance",
+          "Helicopter",
+          "Other"
+        ]
+      },
+      "chief_complaint": {
+        "type": "text",
+        "required": true,
+        "description": "Primary reason for ED visit"
+      },
+      "symptom_duration": {
+        "type": "text",
+        "required": false,
+        "description": "Duration of symptoms"
+      },
+      "pain_score": {
+        "type": "integer",
+        "required": false,
+        "range": [
+          0,
+          10
+        ],
+        "description": "Pain score (0-10 scale)"
+      }
+    },
+    "vital_signs": {
+      "systolic_bp": {
+        "type": "integer",
+        "required": true,
+        "range": [
+          50,
+          300
+        ],
+        "units": "mmHg"
+      },
+      "diastolic_bp": {
+        "type": "integer",
+        "required": true,
+        "range": [
+          30,
+          200
+        ],
+        "units": "mmHg"
+      },
+      "heart_rate": {
+        "type": "integer",
+        "required": true,
+        "range": [
+          30,
+          250
+        ],
+        "units": "bpm"
+      },
+      "respiratory_rate": {
+        "type": "integer",
+        "required": true,
+        "range": [
+          5,
+          60
+        ],
+        "units": "breaths/min"
+      },
+      "temperature": {
+        "type": "decimal",
+        "required": true,
+        "range": [
+          32.0,
+          45.0
+        ],
+        "units": "\u00b0C"
+      },
+      "oxygen_saturation": {
+        "type": "integer",
+        "required": true,
+        "range": [
+          50,
+          100
+        ],
+        "units": "%"
+      },
+      "weight": {
+        "type": "decimal",
+        "required": false,
+        "range": [
+          1.0,
+          300.0
+        ],
+        "units": "kg"
+      }
+    },
+    "medical_history": {
+      "allergies": {
+        "type": "text",
+        "required": false,
+        "description": "Known allergies"
+      },
+      "medications": {
+        "type": "text",
+        "required": false,
+        "description": "Current medications"
+      },
+      "medical_conditions": {
+        "type": "text",
+        "required": false,
+        "description": "Significant medical history"
+      },
+      "previous_surgeries": {
+        "type": "text",
+        "required": false,
+        "description": "Previous surgical procedures"
+      }
+    },
+    "ai_system_output": {
+      "ai_triage_recommendation": {
+        "type": "select",
+        "required": true,
+        "options": [
+          "Green",
+          "Yellow",
+          "Red"
+        ]
+      },
+      "ai_confidence_score": {
+        "type": "decimal",
+        "required": true,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "description": "AI confidence (0-1)"
+      },
+      "ai_processing_time": {
+        "type": "decimal",
+        "required": true,
+        "units": "seconds",
+        "description": "Time for AI to generate recommendation"
+      },
+      "ai_key_features": {
+        "type": "text",
+        "required": false,
+        "description": "Key features influencing AI decision"
+      }
+    },
+    "clinical_assessment": {
+      "nurse_triage_level": {
+        "type": "select",
+        "required": true,
+        "options": [
+          "ESI 1",
+          "ESI 2",
+          "ESI 3",
+          "ESI 4",
+          "ESI 5"
+        ]
+      },
+      "nurse_triage_time": {
+        "type": "datetime",
+        "required": true,
+        "description": "Time of nurse triage completion"
+      },
+      "physician_assessment_time": {
+        "type": "datetime",
+        "required": false,
+        "description": "Time of initial physician assessment"
+      },
+      "primary_diagnosis": {
+        "type": "text",
+        "required": false,
+        "description": "Primary diagnosis (ICD-10)"
+      },
+      "secondary_diagnoses": {
+        "type": "text",
+        "required": false,
+        "description": "Secondary diagnoses"
+      }
+    },
+    "treatment_and_disposition": {
+      "diagnostic_tests": {
+        "type": "text",
+        "required": false,
+        "description": "Diagnostic tests ordered"
+      },
+      "treatments_provided": {
+        "type": "text",
+        "required": false,
+        "description": "Treatments and interventions"
+      },
+      "disposition": {
+        "type": "select",
+        "required": true,
+        "options": [
+          "Discharge",
+          "Admission",
+          "Transfer",
+          "Left AMA",
+          "Deceased"
+        ]
+      },
+      "ed_length_of_stay": {
+        "type": "decimal",
+        "required": true,
+        "units": "hours",
+        "description": "Total ED length of stay"
+      },
+      "time_to_treatment": {
+        "type": "decimal",
+        "required": false,
+        "units": "minutes",
+        "description": "Time from arrival to first treatment"
+      }
+    },
+    "safety_outcomes": {
+      "adverse_events": {
+        "type": "text",
+        "required": false,
+        "description": "Any adverse events during ED stay"
+      },
+      "medication_errors": {
+        "type": "boolean",
+        "required": true,
+        "description": "Any medication errors"
+      },
+      "diagnostic_errors": {
+        "type": "text",
+        "required": false,
+        "description": "Any diagnostic errors or delays"
+      },
+      "patient_complaints": {
+        "type": "text",
+        "required": false,
+        "description": "Patient or family complaints"
+      }
+    },
+    "follow_up_data": {
+      "30_day_readmission": {
+        "type": "boolean",
+        "required": true,
+        "description": "Readmission within 30 days"
+      },
+      "30_day_mortality": {
+        "type": "boolean",
+        "required": true,
+        "description": "Death within 30 days"
+      },
+      "patient_satisfaction": {
+        "type": "integer",
+        "required": false,
+        "range": [
+          1,
+          5
+        ],
+        "description": "Patient satisfaction score (1-5)"
+      },
+      "provider_satisfaction": {
+        "type": "integer",
+        "required": false,
+        "range": [
+          1,
+          5
+        ],
+        "description": "Provider satisfaction with AI system (1-5)"
+      }
+    }
+  },
+  "data_validation_rules": {
+    "required_field_checks": "All required fields must be completed",
+    "range_checks": "Numeric values must be within specified ranges",
+    "consistency_checks": "Cross-field validation for logical consistency",
+    "completeness_checks": "Minimum data requirements for analysis"
+  }
+}

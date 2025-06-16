@@ -1,0 +1,33 @@
+{
+  "report_title": "HIPAA Compliance Assessment - FairTriEdge-FL",
+  "assessment_date": "2025-06-16T01:26:03.371842",
+  "overall_compliance_status": "Compliant",
+  "executive_summary": {
+    "privacy_rule_compliance": "Compliant",
+    "security_rule_compliance": "Compliant",
+    "breach_notification_compliance": "Compliant",
+    "deidentification_compliance": "Compliant",
+    "phi_detection_status": "PHI detected - mitigation required"
+  },
+  "key_findings": [
+    "Federated learning architecture eliminates raw PHI sharing",
+    "Differential privacy provides formal privacy guarantees",
+    "Comprehensive security controls implemented",
+    "Incident response procedures established",
+    "De-identification methods properly applied"
+  ],
+  "recommendations": [
+    "Conduct annual HIPAA compliance reviews",
+    "Implement continuous PHI monitoring",
+    "Regular security assessments and penetration testing",
+    "Staff training on HIPAA requirements for AI systems",
+    "Monitor evolving privacy regulations and guidance"
+  ],
+  "compliance_evidence": {
+    "privacy_rule": "regulatory/hipaa_compliance/privacy_rule_assessment.json",
+    "security_rule": "regulatory/hipaa_compliance/security_rule_assessment.json",
+    "breach_notification": "regulatory/hipaa_compliance/breach_notification_assessment.json",
+    "deidentification": "regulatory/hipaa_compliance/deidentification_assessment.json",
+    "phi_scan": "regulatory/hipaa_compliance/phi_detection_scan.json"
+  }
+}

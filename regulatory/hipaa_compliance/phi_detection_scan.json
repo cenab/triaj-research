@@ -1,0 +1,50 @@
+{
+  "scan_date": "2025-06-16T01:26:03.357293",
+  "file_scanned": "triaj_data.csv",
+  "phi_detected": true,
+  "findings": [
+    {
+      "type": "Column names suggest PHI",
+      "details": [
+        "id"
+      ],
+      "risk_level": "High"
+    },
+    {
+      "type": "Date patterns detected",
+      "details": [
+        "created"
+      ],
+      "risk_level": "Medium",
+      "note": "Dates may be PHI if they are birth dates, admission dates, etc."
+    },
+    {
+      "type": "High cardinality columns (potential identifiers)",
+      "details": [
+        {
+          "column": "id",
+          "unique_values": 539,
+          "total_rows": 539
+        },
+        {
+          "column": "created",
+          "unique_values": 539,
+          "total_rows": 539
+        },
+        {
+          "column": "protokol",
+          "unique_values": 532,
+          "total_rows": 539
+        }
+      ],
+      "risk_level": "Medium"
+    }
+  ],
+  "recommendations": [
+    "Remove or de-identify direct identifiers",
+    "Apply statistical disclosure control techniques",
+    "Implement differential privacy",
+    "Use federated learning to avoid raw data sharing",
+    "Conduct formal privacy impact assessment"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "package_title": "FairTriEdge-FL Clinical Trial Documentation Package",
+  "version": "1.0",
+  "date": "2025-06-16T01:26:10.248561",
+  "documents_included": {
+    "study_protocol": "regulatory/clinical_trials/study_protocol.json",
+    "informed_consent_form": "regulatory/clinical_trials/informed_consent_form.json",
+    "case_report_form": "regulatory/clinical_trials/case_report_form.json",
+    "data_management_plan": "regulatory/clinical_trials/data_management_plan.json",
+    "monitoring_plan": "regulatory/clinical_trials/monitoring_plan.json"
+  },
+  "regulatory_requirements": {
+    "ich_gcp_compliance": "All documents follow ICH-GCP guidelines",
+    "fda_requirements": "Compliant with FDA guidance for AI/ML devices",
+    "irb_submission": "Ready for Institutional Review Board submission",
+    "regulatory_submission": "Suitable for FDA 510(k) or IDE submission"
+  },
+  "implementation_timeline": {
+    "protocol_finalization": "Month 1",
+    "irb_submission": "Month 2",
+    "site_initiation": "Month 3-4",
+    "patient_enrollment": "Month 5-16",
+    "data_analysis": "Month 17-18",
+    "final_report": "Month 19"
+  },
+  "resource_requirements": {
+    "study_sites": "5-10 emergency departments",
+    "study_personnel": "Principal investigator, study coordinators, data managers",
+    "technology_requirements": "EDC system, AI system integration",
+    "estimated_budget": "Contact for detailed budget estimate"
+  }
+}

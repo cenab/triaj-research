@@ -1,0 +1,91 @@
+{
+  "plan_title": "Data Management Plan - FairTriEdge-FL Clinical Study",
+  "version": "1.0",
+  "date": "2025-06-16T01:26:10.248561",
+  "data_management_overview": {
+    "data_types": [
+      "Clinical data from electronic health records",
+      "AI system outputs and performance metrics",
+      "Patient-reported outcome measures",
+      "Provider satisfaction surveys"
+    ],
+    "data_volume": "Estimated 10,000 patient records with ~200 data points each",
+    "data_sources": [
+      "Hospital electronic health record systems",
+      "FairTriEdge-FL AI system logs",
+      "Patient surveys and questionnaires",
+      "Provider feedback forms"
+    ]
+  },
+  "data_collection": {
+    "collection_methods": {
+      "electronic_data_capture": "REDCap or similar HIPAA-compliant system",
+      "automated_data_extraction": "Direct integration with EHR systems where possible",
+      "manual_data_entry": "For data not available electronically",
+      "quality_control": "Double data entry for critical variables"
+    },
+    "data_collection_timeline": {
+      "baseline_data": "At time of ED presentation",
+      "intervention_data": "During ED stay",
+      "outcome_data": "At discharge and 30-day follow-up"
+    }
+  },
+  "data_quality_assurance": {
+    "data_validation": {
+      "real_time_validation": "Range checks and consistency rules in EDC system",
+      "periodic_data_review": "Monthly data quality reports",
+      "source_data_verification": "10% random sample verification against source documents"
+    },
+    "missing_data_handling": {
+      "prevention": "Required field validation in EDC system",
+      "monitoring": "Regular missing data reports",
+      "imputation": "Multiple imputation for key variables if appropriate"
+    },
+    "data_cleaning": {
+      "outlier_detection": "Statistical methods to identify outliers",
+      "consistency_checks": "Cross-variable validation rules",
+      "query_management": "Formal query process for data discrepancies"
+    }
+  },
+  "data_security_and_privacy": {
+    "access_controls": {
+      "user_authentication": "Multi-factor authentication required",
+      "role_based_access": "Access limited based on job function",
+      "audit_trails": "All data access logged and monitored"
+    },
+    "data_encryption": {
+      "data_at_rest": "AES-256 encryption for stored data",
+      "data_in_transit": "TLS 1.3 for all data transmissions",
+      "backup_encryption": "Encrypted backups with secure key management"
+    },
+    "privacy_protection": {
+      "de_identification": "Direct identifiers removed from analysis datasets",
+      "limited_datasets": "Minimum necessary data for research purposes",
+      "data_use_agreements": "Formal agreements with all participating sites"
+    }
+  },
+  "data_storage_and_retention": {
+    "primary_storage": {
+      "location": "HIPAA-compliant cloud infrastructure",
+      "backup_strategy": "Daily automated backups with geographic redundancy",
+      "disaster_recovery": "Comprehensive disaster recovery plan"
+    },
+    "retention_schedule": {
+      "active_study_period": "All data retained during study",
+      "post_study_retention": "25 years per FDA requirements",
+      "destruction_schedule": "Secure destruction after retention period"
+    }
+  },
+  "data_sharing_and_dissemination": {
+    "internal_sharing": {
+      "study_team_access": "Role-based access for study personnel",
+      "sponsor_access": "Aggregate data and reports",
+      "dsmb_access": "Safety data for Data Safety Monitoring Board"
+    },
+    "external_sharing": {
+      "regulatory_submissions": "De-identified data for FDA submission",
+      "publication_data": "Summary statistics for peer-reviewed publications",
+      "data_repository": "Consider sharing de-identified data in public repository"
+    }
+  }
+}

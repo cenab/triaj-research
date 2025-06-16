@@ -1,0 +1,37 @@
+{
+  "device_name": "FairTriEdge-FL",
+  "classification": "Class II",
+  "intended_use": {
+    "primary_indication": "Emergency department triage decision support",
+    "target_population": "Adult and pediatric patients presenting to emergency departments",
+    "clinical_setting": "Hospital emergency departments",
+    "user_population": "Licensed healthcare professionals (physicians, nurses)",
+    "contraindications": [
+      "Not for use as sole diagnostic tool",
+      "Requires clinical oversight and validation",
+      "Not suitable for patients under 1 year of age"
+    ]
+  },
+  "device_description": {
+    "technology": "Federated Learning-based AI/ML system",
+    "algorithm_type": "Deep neural network with multimodal fusion",
+    "input_data": [
+      "Patient demographics (age, gender)",
+      "Vital signs (blood pressure, heart rate, temperature, oxygen saturation)",
+      "Clinical symptoms and medical history",
+      "Temporal factors (time of presentation)"
+    ],
+    "output": "Triage priority recommendation (Green/Yellow/Red) with confidence score",
+    "deployment": "Edge computing devices in hospital networks"
+  },
+  "predicate_devices": [
+    "Emergency Severity Index (ESI) algorithms",
+    "Manchester Triage System",
+    "Canadian Triage and Acuity Scale (CTAS)"
+  ],
+  "substantial_equivalence": {
+    "similar_intended_use": true,
+    "similar_technological_characteristics": false,
+    "novel_technology": "Federated learning with differential privacy"
+  }
+}

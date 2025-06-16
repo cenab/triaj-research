@@ -1,0 +1,66 @@
+{
+  "rule_section": "45 CFR 164.400-414 - Breach Notification Rule",
+  "assessment_date": "2025-06-16T01:26:03.357105",
+  "breach_definition": {
+    "definition": "Unauthorized acquisition, access, use, or disclosure of PHI",
+    "exceptions": [
+      "Unintentional access by workforce member acting in good faith",
+      "Inadvertent disclosure between authorized persons",
+      "Disclosure where unauthorized person could not reasonably retain information"
+    ]
+  },
+  "risk_assessment_framework": {
+    "factors_to_consider": [
+      "Nature and extent of PHI involved",
+      "Unauthorized person who used/received PHI",
+      "Whether PHI was actually acquired or viewed",
+      "Extent to which risk has been mitigated"
+    ],
+    "ai_specific_considerations": [
+      "Differential privacy protection level",
+      "Federated learning data isolation",
+      "Model parameter exposure risk",
+      "Inference attack vulnerability"
+    ]
+  },
+  "notification_requirements": {
+    "individual_notification": {
+      "timeline": "Within 60 days of discovery",
+      "method": "Written notice (mail or email)",
+      "content_requirements": [
+        "Description of breach",
+        "Types of information involved",
+        "Steps individuals should take",
+        "What organization is doing",
+        "Contact information"
+      ]
+    },
+    "hhs_notification": {
+      "timeline": "Within 60 days of discovery",
+      "method": "HHS breach notification website",
+      "annual_summary": "For breaches affecting <500 individuals"
+    },
+    "media_notification": {
+      "requirement": "For breaches affecting >500 individuals in state/jurisdiction",
+      "timeline": "Without unreasonable delay",
+      "method": "Prominent media outlet"
+    }
+  },
+  "incident_response_plan": {
+    "detection_and_analysis": {
+      "monitoring_systems": "Real-time security monitoring",
+      "incident_classification": "Severity levels and response procedures",
+      "forensic_analysis": "Digital forensics capabilities"
+    },
+    "containment_and_eradication": {
+      "immediate_response": "Isolate affected systems",
+      "threat_removal": "Remove malicious code or unauthorized access",
+      "system_hardening": "Implement additional security controls"
+    },
+    "recovery_and_lessons_learned": {
+      "system_restoration": "Restore normal operations",
+      "monitoring": "Enhanced monitoring post-incident",
+      "documentation": "Incident documentation and lessons learned"
+    }
+  }
+}

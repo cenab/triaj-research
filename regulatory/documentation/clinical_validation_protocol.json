@@ -1,0 +1,62 @@
+{
+  "study_design": {
+    "type": "Prospective, multi-center, non-randomized clinical study",
+    "primary_endpoint": "Agreement between AI triage recommendation and expert clinical assessment",
+    "secondary_endpoints": [
+      "Time to treatment for high-acuity patients",
+      "Emergency department length of stay",
+      "Patient safety outcomes (missed critical diagnoses)",
+      "Healthcare provider satisfaction and trust"
+    ],
+    "sample_size": {
+      "target_enrollment": 10000,
+      "power_calculation": "80% power to detect 5% difference in triage accuracy",
+      "alpha": 0.05,
+      "beta": 0.2
+    }
+  },
+  "inclusion_criteria": [
+    "Patients \u2265 1 year of age presenting to emergency department",
+    "Complete vital signs and clinical assessment available",
+    "Informed consent obtained (or waiver approved)"
+  ],
+  "exclusion_criteria": [
+    "Patients requiring immediate resuscitation",
+    "Incomplete clinical data",
+    "Patients who opt out of AI-assisted triage"
+  ],
+  "study_sites": {
+    "minimum_sites": 5,
+    "site_requirements": [
+      "Level I or II trauma center",
+      "Annual ED volume > 50,000 patients",
+      "Electronic health record integration capability",
+      "Institutional Review Board approval"
+    ]
+  },
+  "data_collection": {
+    "baseline_data": [
+      "Patient demographics",
+      "Presenting complaint and symptoms",
+      "Vital signs and clinical assessment",
+      "Medical history and comorbidities"
+    ],
+    "outcome_data": [
+      "AI triage recommendation and confidence",
+      "Clinical triage decision",
+      "Final diagnosis and disposition",
+      "Length of stay and time to treatment",
+      "Adverse events and safety outcomes"
+    ]
+  },
+  "statistical_analysis": {
+    "primary_analysis": "Cohen's kappa for agreement between AI and clinical triage",
+    "secondary_analyses": [
+      "Sensitivity and specificity for high-acuity cases",
+      "Positive and negative predictive values",
+      "Area under ROC curve",
+      "Subgroup analyses by age, gender, and presenting complaint"
+    ],
+    "safety_analysis": "Descriptive analysis of missed diagnoses and adverse events"
+  }
+}

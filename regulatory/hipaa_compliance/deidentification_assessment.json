@@ -1,0 +1,73 @@
+{
+  "regulation": "45 CFR 164.514 - De-identification of Protected Health Information",
+  "assessment_date": "2025-06-16T01:26:03.357201",
+  "methods_available": {
+    "safe_harbor_method": {
+      "description": "Remove 18 specified identifiers",
+      "identifiers_to_remove": [
+        "names",
+        "geographic_subdivisions",
+        "dates",
+        "telephone_numbers",
+        "fax_numbers",
+        "email_addresses",
+        "social_security_numbers",
+        "medical_record_numbers",
+        "health_plan_beneficiary_numbers",
+        "account_numbers",
+        "certificate_license_numbers",
+        "vehicle_identifiers",
+        "device_identifiers",
+        "web_urls",
+        "ip_addresses",
+        "biometric_identifiers",
+        "full_face_photos",
+        "other_unique_identifying_numbers"
+      ],
+      "implementation_in_fairtriedge": {
+        "data_preprocessing": "Remove direct identifiers during feature engineering",
+        "age_handling": "Age in years only (not birth dates)",
+        "geographic_data": "No geographic subdivisions smaller than state",
+        "date_handling": "Relative dates only (days since admission)"
+      },
+      "compliance_status": "Implemented"
+    },
+    "expert_determination": {
+      "description": "Statistical expert determines very small risk of re-identification",
+      "requirements": [
+        "Person with appropriate knowledge and experience",
+        "Statistical and scientific principles and methods",
+        "Very small risk determination"
+      ],
+      "implementation_in_fairtriedge": {
+        "differential_privacy": "Formal privacy guarantees with epsilon-delta parameters",
+        "k_anonymity": "Ensure k-anonymity in quasi-identifiers",
+        "l_diversity": "Ensure diversity in sensitive attributes",
+        "t_closeness": "Maintain distribution similarity"
+      },
+      "compliance_status": "Implemented with differential privacy"
+    }
+  },
+  "fairtriedge_specific_protections": {
+    "federated_learning": {
+      "protection": "Raw data never leaves hospital premises",
+      "mechanism": "Only model parameters shared between sites",
+      "privacy_benefit": "Eliminates direct data sharing risks"
+    },
+    "differential_privacy": {
+      "protection": "Formal privacy guarantees",
+      "parameters": "Epsilon=1.0, Delta=1e-5",
+      "mechanism": "Noise injection in gradient updates"
+    },
+    "secure_aggregation": {
+      "protection": "Encrypted parameter aggregation",
+      "mechanism": "Cryptographic protocols for secure computation",
+      "privacy_benefit": "Prevents inference from individual updates"
+    }
+  },
+  "ongoing_monitoring": {
+    "re_identification_risk_assessment": "Regular assessment of re-identification risks",
+    "privacy_impact_assessment": "Annual privacy impact assessments",
+    "technology_updates": "Monitor new privacy-preserving technologies"
+  }
+}

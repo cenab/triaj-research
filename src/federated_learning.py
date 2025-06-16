@@ -19,13 +19,29 @@ def set_model_parameters(model, parameters):
     model.load_state_dict(state_dict, strict=True)
 
 class FederatedClient:
-    def __init__(self, client_id, model, data_loader, device):
+    def __init__(self, client_id, model, data_loader, device, privacy_config=None):
         self.client_id = client_id
         self.model = model
         self.data_loader = data_loader
         self.device = device
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         self.criterion = nn.CrossEntropyLoss()
+        
+        # Privacy configuration
+        self.privacy_config = privacy_config or {
+            'enable_dp': False,
+            'epsilon': 1.0,
+            'delta': 1e-5,
+            'max_grad_norm': 1.0,
+            'noise_multiplier': None
+        }
+        
+        # Privacy accounting
+        if self.privacy_config.get('enable_dp', False):
+            total_epsilon = self.privacy_config.get('total_epsilon', 10.0)
+            self.privacy_accountant = PrivacyAccountant(total_epsilon, self.privacy_config['delta'])
+        else:
+            self.privacy_accountant = None
 
     def get_parameters(self):
         """Returns the current model parameters as a list of NumPy arrays."""
@@ -35,10 +51,29 @@ class FederatedClient:
         """Sets the model parameters from a list of NumPy arrays."""
         set_model_parameters(self.model, parameters)
 
-    def train(self, epochs=1):
-        """Trains the local model for a specified number of epochs."""
+    def train(self, epochs=1, apply_dp=None):
+        """
+        Trains the local model for a specified number of epochs with optional differential privacy.
+        
+        Args:
+            epochs (int): Number of training epochs.
+            apply_dp (bool): Whether to apply differential privacy. If None, uses privacy_config.
+        
+        Returns:
+            tuple: (parameters, num_samples, privacy_metrics)
+        """
         self.model.train()
         total_loss = 0
+        
+        # Determine if DP should be applied
+        if apply_dp is None:
+            apply_dp = self.privacy_config.get('enable_dp', False)
+        
+        # Store initial parameters for gradient calculation
+        if apply_dp:
+            initial_params = self.get_parameters()
+        
+        # Training loop
         for epoch in range(epochs):
             for numerical_data, boolean_data, temporal_data, targets in self.data_loader:
                 numerical_data, boolean_data, temporal_data, targets = \
@@ -49,10 +84,71 @@ class FederatedClient:
                 outputs = self.model(numerical_data, boolean_data, temporal_data)
                 loss = self.criterion(outputs, targets)
                 loss.backward()
+                
+                # Apply gradient clipping if DP is enabled
+                if apply_dp and self.privacy_config.get('max_grad_norm', 0) > 0:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(),
+                        self.privacy_config['max_grad_norm']
+                    )
+                
                 self.optimizer.step()
                 total_loss += loss.item()
-        print(f"Client {self.client_id} trained. Avg Loss: {total_loss / len(self.data_loader):.4f}")
-        return self.get_parameters(), len(self.data_loader.dataset)
+        
+        avg_loss = total_loss / len(self.data_loader)
+        print(f"Client {self.client_id} trained. Avg Loss: {avg_loss:.4f}")
+        
+        # Apply differential privacy to parameter updates
+        privacy_metrics = {'dp_applied': False}
+        final_params = self.get_parameters()
+        
+        if apply_dp:
+            # Calculate parameter updates (gradients)
+            param_updates = []
+            for initial, final in zip(initial_params, final_params):
+                update = final - initial
+                param_updates.append(update)
+            
+            # Apply differential privacy to updates
+            epsilon_round = self.privacy_config['epsilon']
+            if self.privacy_accountant:
+                try:
+                    self.privacy_accountant.consume_privacy_budget(epsilon_round)
+                except ValueError as e:
+                    print(f"Privacy budget exceeded for client {self.client_id}: {e}")
+                    # Return parameters without DP
+                    return final_params, len(self.data_loader.dataset), privacy_metrics
+            
+            noisy_updates, dp_metrics = apply_differential_privacy(
+                param_updates,
+                sensitivity=self.privacy_config.get('sensitivity', 1.0),
+                epsilon=epsilon_round,
+                delta=self.privacy_config['delta'],
+                method=self.privacy_config.get('method', 'gaussian'),
+                max_grad_norm=self.privacy_config['max_grad_norm'],
+                sample_size=len(self.data_loader.dataset)
+            )
+            
+            # Apply noisy updates to get final noisy parameters
+            noisy_params = []
+            for initial, noisy_update in zip(initial_params, noisy_updates):
+                noisy_param = initial + noisy_update
+                noisy_params.append(noisy_param)
+            
+            privacy_metrics = {
+                'dp_applied': True,
+                'epsilon_consumed': dp_metrics['epsilon_consumed'],
+                'noise_multiplier': dp_metrics['noise_multiplier'],
+                'clipping_applied': dp_metrics['clipping_applied'],
+                'remaining_budget': self.privacy_accountant.get_remaining_budget() if self.privacy_accountant else None
+            }
+            
+            print(f"Client {self.client_id} DP applied: ε={epsilon_round:.3f}, "
+                  f"noise_mult={dp_metrics['noise_multiplier']:.4f}")
+            
+            return noisy_params, len(self.data_loader.dataset), privacy_metrics
+        
+        return final_params, len(self.data_loader.dataset), privacy_metrics
 
     def evaluate(self):
         """Evaluates the local model on its local dataset."""
@@ -558,95 +654,356 @@ def monitor_data_drift(client_data_dict, method="none"):
     return False # Default to no drift detected
 
 # Placeholder for Privacy Preservation (Phase 3.2)
-def apply_differential_privacy(gradients, sensitivity, epsilon, method="none"):
+class PrivacyAccountant:
     """
-    Applies differential privacy to gradients based on the specified method.
+    Privacy accountant for tracking privacy budget consumption in federated learning.
+    """
+    def __init__(self, epsilon_total, delta=1e-5):
+        self.epsilon_total = epsilon_total
+        self.delta = delta
+        self.epsilon_consumed = 0.0
+        self.round_history = []
+    
+    def consume_privacy_budget(self, epsilon_round):
+        """Consume privacy budget for a round."""
+        if self.epsilon_consumed + epsilon_round > self.epsilon_total:
+            raise ValueError(f"Privacy budget exceeded! Requested: {epsilon_round}, "
+                           f"Available: {self.epsilon_total - self.epsilon_consumed}")
+        
+        self.epsilon_consumed += epsilon_round
+        self.round_history.append(epsilon_round)
+        return True
+    
+    def get_remaining_budget(self):
+        """Get remaining privacy budget."""
+        return self.epsilon_total - self.epsilon_consumed
+    
+    def get_privacy_spent(self):
+        """Get total privacy spent."""
+        return self.epsilon_consumed, self.delta
+
+def apply_differential_privacy(gradients, sensitivity=1.0, epsilon=1.0, delta=1e-5,
+                             method="gaussian", max_grad_norm=1.0, sample_size=None):
+    """
+    Enhanced differential privacy implementation with proper privacy accounting.
+    
     Args:
-        gradients (list): List of gradients (e.g., model updates).
+        gradients (list): List of gradients (model parameters as numpy arrays).
         sensitivity (float): The L2 sensitivity of the function.
-        epsilon (float): The privacy budget.
-        method (str): The differential privacy method to use ('none', 'opacus_tf_privacy').
+        epsilon (float): The privacy budget for this round.
+        delta (float): The delta parameter for (epsilon, delta)-DP.
+        method (str): DP method ('gaussian', 'laplace', 'opacus', 'none').
+        max_grad_norm (float): Maximum gradient norm for clipping.
+        sample_size (int): Number of samples (for noise calibration).
+    
     Returns:
-        list: Noisy gradients.
+        tuple: (noisy_gradients, privacy_metrics)
     """
-    if method == "opacus_tf_privacy":
-        print(f"Applying Differential Privacy (method: Opacus/TensorFlow Privacy, epsilon={epsilon}).")
-        try:
-            # Try to import Opacus for PyTorch differential privacy
-            from opacus import PrivacyEngine
-            from opacus.utils.batch_memory_manager import BatchMemoryManager
-            from opacus.accountants.utils import get_noise_multiplier
-            
-            # Calculate noise multiplier from epsilon and delta
-            delta = 1e-5  # Standard delta value
-            sample_size = 1000  # Assumed sample size, should be passed as parameter
-            epochs = 1  # Assumed epochs, should be passed as parameter
-            
-            noise_multiplier = get_noise_multiplier(
-                target_epsilon=epsilon,
-                target_delta=delta,
-                sample_rate=1.0/sample_size,  # Assuming full batch
-                epochs=epochs
-            )
-            
-            print(f"Calculated noise multiplier: {noise_multiplier} for epsilon={epsilon}, delta={delta}")
-            
-            # Apply Gaussian noise to gradients manually
-            # In a real implementation, this would be handled by PrivacyEngine
-            noisy_gradients = []
-            for grad in gradients:
-                if isinstance(grad, torch.Tensor):
-                    # Add Gaussian noise scaled by sensitivity and noise multiplier
-                    noise = torch.normal(0, noise_multiplier * sensitivity, grad.shape)
-                    noisy_grad = grad + noise
-                    noisy_gradients.append(noisy_grad)
-                else:
-                    # Handle non-tensor gradients (e.g., numpy arrays)
-                    if isinstance(grad, np.ndarray):
-                        noise = np.random.normal(0, noise_multiplier * sensitivity, grad.shape)
-                        noisy_grad = grad + noise
-                        noisy_gradients.append(noisy_grad)
-                    else:
-                        noisy_gradients.append(grad)
-            
-            print(f"Applied differential privacy noise to {len(noisy_gradients)} gradient tensors.")
-            
-        except ImportError:
-            print("Opacus not available. Install with: pip install opacus")
-            print("Falling back to manual Gaussian noise addition.")
-            
-            # Manual implementation without Opacus
-            # Calculate noise multiplier using standard formula
-            delta = 1e-5
-            noise_multiplier = np.sqrt(2 * np.log(1.25 / delta)) / epsilon
-            
-            noisy_gradients = []
-            for grad in gradients:
-                if isinstance(grad, torch.Tensor):
-                    noise = torch.normal(0, noise_multiplier * sensitivity, grad.shape)
-                    noisy_grad = grad + noise
-                    noisy_gradients.append(noisy_grad)
-                elif isinstance(grad, np.ndarray):
-                    noise = np.random.normal(0, noise_multiplier * sensitivity, grad.shape)
-                    noisy_grad = grad + noise
-                    noisy_gradients.append(noisy_grad)
-                else:
-                    noisy_gradients.append(grad)
-            
-            print(f"Applied manual differential privacy noise (noise_multiplier={noise_multiplier:.4f})")
-            
-        except Exception as e:
-            print(f"Error in differential privacy implementation: {e}")
-            print("Returning gradients without noise.")
-            noisy_gradients = gradients
-    elif method == "none":
+    privacy_metrics = {
+        'epsilon_consumed': epsilon,
+        'delta': delta,
+        'noise_multiplier': 0.0,
+        'clipping_applied': False,
+        'method': method
+    }
+    
+    if method == "none":
         print("Applying Differential Privacy (method: None).")
-        noisy_gradients = gradients
+        return gradients, privacy_metrics
+    
+    print(f"Applying Differential Privacy (method: {method}, ε={epsilon}, δ={delta})")
+    
+    try:
+        # Convert gradients to tensors if needed
+        tensor_gradients = []
+        for grad in gradients:
+            if isinstance(grad, np.ndarray):
+                tensor_gradients.append(torch.from_numpy(grad).float())
+            elif isinstance(grad, torch.Tensor):
+                tensor_gradients.append(grad.float())
+            else:
+                tensor_gradients.append(torch.tensor(grad).float())
+        
+        # Apply gradient clipping
+        if max_grad_norm > 0:
+            total_norm = 0.0
+            for grad in tensor_gradients:
+                total_norm += grad.norm().item() ** 2
+            total_norm = total_norm ** 0.5
+            
+            if total_norm > max_grad_norm:
+                clip_coef = max_grad_norm / (total_norm + 1e-6)
+                for i, grad in enumerate(tensor_gradients):
+                    tensor_gradients[i] = grad * clip_coef
+                privacy_metrics['clipping_applied'] = True
+                print(f"Gradient clipping applied: norm {total_norm:.4f} -> {max_grad_norm}")
+        
+        # Apply noise based on method
+        if method == "gaussian":
+            noise_multiplier = _calculate_gaussian_noise_multiplier(epsilon, delta, sample_size)
+            noisy_gradients = _add_gaussian_noise(tensor_gradients, noise_multiplier, sensitivity)
+            privacy_metrics['noise_multiplier'] = noise_multiplier
+            
+        elif method == "laplace":
+            noise_scale = sensitivity / epsilon
+            noisy_gradients = _add_laplace_noise(tensor_gradients, noise_scale)
+            privacy_metrics['noise_multiplier'] = noise_scale
+            
+        elif method == "opacus":
+            noisy_gradients, opacus_metrics = _apply_opacus_dp(tensor_gradients, epsilon, delta,
+                                                             sensitivity, sample_size)
+            privacy_metrics.update(opacus_metrics)
+            
+        else:
+            print(f"Unknown DP method: {method}. Using Gaussian noise.")
+            noise_multiplier = _calculate_gaussian_noise_multiplier(epsilon, delta, sample_size)
+            noisy_gradients = _add_gaussian_noise(tensor_gradients, noise_multiplier, sensitivity)
+            privacy_metrics['noise_multiplier'] = noise_multiplier
+        
+        # Convert back to numpy arrays
+        result_gradients = []
+        for grad in noisy_gradients:
+            if isinstance(grad, torch.Tensor):
+                result_gradients.append(grad.detach().cpu().numpy())
+            else:
+                result_gradients.append(grad)
+        
+        print(f"DP applied: ε={epsilon}, noise_multiplier={privacy_metrics['noise_multiplier']:.4f}")
+        return result_gradients, privacy_metrics
+        
+    except Exception as e:
+        print(f"Error in differential privacy implementation: {e}")
+        print("Returning gradients without noise.")
+        privacy_metrics['epsilon_consumed'] = 0.0
+        privacy_metrics['method'] = 'failed'
+        return gradients, privacy_metrics
+
+def _calculate_gaussian_noise_multiplier(epsilon, delta, sample_size=None):
+    """Calculate noise multiplier for Gaussian mechanism."""
+    if sample_size is None:
+        # Use standard formula for infinite sample size
+        return np.sqrt(2 * np.log(1.25 / delta)) / epsilon
     else:
-        print(f"Unknown Differential Privacy method: {method}. Gradients returned as is.")
-        noisy_gradients = gradients
+        # Use more precise calculation for finite sample size
+        # This is a simplified version; real implementation would use RDP accountant
+        c = np.sqrt(2 * np.log(1.25 / delta))
+        return c / epsilon
+
+def _add_gaussian_noise(gradients, noise_multiplier, sensitivity):
+    """Add Gaussian noise to gradients."""
+    noisy_gradients = []
+    for grad in gradients:
+        noise_std = noise_multiplier * sensitivity
+        noise = torch.normal(0, noise_std, grad.shape)
+        noisy_grad = grad + noise
+        noisy_gradients.append(noisy_grad)
     return noisy_gradients
 
+def _add_laplace_noise(gradients, noise_scale):
+    """Add Laplace noise to gradients."""
+    noisy_gradients = []
+    for grad in gradients:
+        # PyTorch doesn't have Laplace distribution, so we'll use numpy
+        noise = np.random.laplace(0, noise_scale, grad.shape)
+        noise_tensor = torch.from_numpy(noise).float()
+        noisy_grad = grad + noise_tensor
+        noisy_gradients.append(noisy_grad)
+    return noisy_gradients
+
+def _apply_opacus_dp(gradients, epsilon, delta, sensitivity, sample_size):
+    """Apply differential privacy using Opacus library."""
+    try:
+        from opacus.accountants.utils import get_noise_multiplier
+        
+        # Calculate noise multiplier using Opacus
+        if sample_size is None:
+            sample_size = 1000  # Default assumption
+        
+        sample_rate = 1.0 / sample_size
+        epochs = 1  # Single round
+        
+        noise_multiplier = get_noise_multiplier(
+            target_epsilon=epsilon,
+            target_delta=delta,
+            sample_rate=sample_rate,
+            epochs=epochs
+        )
+        
+        # Apply noise
+        noisy_gradients = _add_gaussian_noise(gradients, noise_multiplier, sensitivity)
+        
+        metrics = {
+            'noise_multiplier': noise_multiplier,
+            'sample_rate': sample_rate,
+            'opacus_available': True
+        }
+        
+        return noisy_gradients, metrics
+        
+    except ImportError:
+        print("Opacus not available. Falling back to manual implementation.")
+        noise_multiplier = _calculate_gaussian_noise_multiplier(epsilon, delta, sample_size)
+        noisy_gradients = _add_gaussian_noise(gradients, noise_multiplier, sensitivity)
+        
+        metrics = {
+            'noise_multiplier': noise_multiplier,
+            'opacus_available': False
+        }
+        
+        return noisy_gradients, metrics
+
+class ByzantineAttackSimulator:
+    """
+    Simulator for various Byzantine attacks in federated learning.
+    """
+    
+    @staticmethod
+    def label_flipping_attack(client_updates, attack_ratio=0.2, flip_probability=0.5):
+        """
+        Simulate label flipping attack by modifying client updates.
+        
+        Args:
+            client_updates (list): List of (parameters, num_samples) tuples.
+            attack_ratio (float): Fraction of clients to compromise.
+            flip_probability (float): Probability of flipping each parameter.
+        
+        Returns:
+            list: Modified client updates with attacks.
+        """
+        num_clients = len(client_updates)
+        num_malicious = int(num_clients * attack_ratio)
+        
+        if num_malicious == 0:
+            return client_updates
+        
+        # Select random clients to compromise
+        malicious_indices = np.random.choice(num_clients, num_malicious, replace=False)
+        
+        attacked_updates = []
+        for i, (params, num_samples) in enumerate(client_updates):
+            if i in malicious_indices:
+                # Apply label flipping by negating some parameters
+                attacked_params = []
+                for param in params:
+                    if np.random.random() < flip_probability:
+                        attacked_param = -param  # Flip the parameter
+                    else:
+                        attacked_param = param
+                    attacked_params.append(attacked_param)
+                attacked_updates.append((attacked_params, num_samples))
+                print(f"Applied label flipping attack to client {i}")
+            else:
+                attacked_updates.append((params, num_samples))
+        
+        return attacked_updates
+    
+    @staticmethod
+    def gradient_ascent_attack(client_updates, attack_ratio=0.2, scale_factor=10.0):
+        """
+        Simulate gradient ascent attack by scaling malicious updates.
+        
+        Args:
+            client_updates (list): List of (parameters, num_samples) tuples.
+            attack_ratio (float): Fraction of clients to compromise.
+            scale_factor (float): Factor to scale malicious updates.
+        
+        Returns:
+            list: Modified client updates with attacks.
+        """
+        num_clients = len(client_updates)
+        num_malicious = int(num_clients * attack_ratio)
+        
+        if num_malicious == 0:
+            return client_updates
+        
+        malicious_indices = np.random.choice(num_clients, num_malicious, replace=False)
+        
+        attacked_updates = []
+        for i, (params, num_samples) in enumerate(client_updates):
+            if i in malicious_indices:
+                # Scale parameters to simulate gradient ascent
+                attacked_params = []
+                for param in params:
+                    attacked_param = param * scale_factor
+                    attacked_params.append(attacked_param)
+                attacked_updates.append((attacked_params, num_samples))
+                print(f"Applied gradient ascent attack to client {i} (scale: {scale_factor})")
+            else:
+                attacked_updates.append((params, num_samples))
+        
+        return attacked_updates
+    
+    @staticmethod
+    def gaussian_noise_attack(client_updates, attack_ratio=0.2, noise_std=1.0):
+        """
+        Simulate Gaussian noise attack by adding random noise.
+        
+        Args:
+            client_updates (list): List of (parameters, num_samples) tuples.
+            attack_ratio (float): Fraction of clients to compromise.
+            noise_std (float): Standard deviation of Gaussian noise.
+        
+        Returns:
+            list: Modified client updates with attacks.
+        """
+        num_clients = len(client_updates)
+        num_malicious = int(num_clients * attack_ratio)
+        
+        if num_malicious == 0:
+            return client_updates
+        
+        malicious_indices = np.random.choice(num_clients, num_malicious, replace=False)
+        
+        attacked_updates = []
+        for i, (params, num_samples) in enumerate(client_updates):
+            if i in malicious_indices:
+                # Add Gaussian noise to parameters
+                attacked_params = []
+                for param in params:
+                    noise = np.random.normal(0, noise_std, param.shape)
+                    attacked_param = param + noise
+                    attacked_params.append(attacked_param)
+                attacked_updates.append((attacked_params, num_samples))
+                print(f"Applied Gaussian noise attack to client {i} (std: {noise_std})")
+            else:
+                attacked_updates.append((params, num_samples))
+        
+        return attacked_updates
+
+def simulate_byzantine_attacks(client_updates, attack_type="none", attack_ratio=0.2, **kwargs):
+    """
+    Simulate various Byzantine attacks on client updates.
+    
+    Args:
+        client_updates (list): List of (parameters, num_samples) tuples.
+        attack_type (str): Type of attack ('none', 'label_flipping', 'gradient_ascent', 
+                          'gaussian_noise').
+        attack_ratio (float): Fraction of clients to compromise.
+        **kwargs: Additional attack-specific parameters.
+    
+    Returns:
+        list: Client updates with simulated attacks.
+    """
+    if attack_type == "none":
+        return client_updates
+    
+    simulator = ByzantineAttackSimulator()
+    
+    if attack_type == "label_flipping":
+        flip_probability = kwargs.get('flip_probability', 0.5)
+        return simulator.label_flipping_attack(client_updates, attack_ratio, flip_probability)
+    
+    elif attack_type == "gradient_ascent":
+        scale_factor = kwargs.get('scale_factor', 10.0)
+        return simulator.gradient_ascent_attack(client_updates, attack_ratio, scale_factor)
+    
+    elif attack_type == "gaussian_noise":
+        noise_std = kwargs.get('noise_std', 1.0)
+        return simulator.gaussian_noise_attack(client_updates, attack_ratio, noise_std)
+    
+    else:
+        print(f"Unknown attack type: {attack_type}. Returning original updates.")
+        return client_updates
 # Placeholder for Poisoning Defense and Robust Aggregation (Phase 3.3)
 def apply_robust_aggregation(client_updates, method="fedavg", num_malicious=0):
     """

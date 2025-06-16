@@ -1,0 +1,58 @@
+{
+  "plan_title": "Clinical Trial Monitoring Plan - FairTriEdge-FL Study",
+  "version": "1.0",
+  "date": "2025-06-16T01:26:10.248561",
+  "monitoring_overview": {
+    "monitoring_approach": "Risk-based monitoring with central and on-site components",
+    "monitoring_frequency": "Monthly central monitoring, quarterly on-site visits",
+    "monitoring_scope": "All critical data and safety parameters"
+  },
+  "central_monitoring": {
+    "data_review": {
+      "frequency": "Weekly automated reports, monthly detailed review",
+      "parameters_monitored": [
+        "Enrollment rates and demographics",
+        "Protocol deviations and violations",
+        "Data quality metrics",
+        "Safety signals and adverse events",
+        "Primary endpoint data completeness"
+      ]
+    },
+    "statistical_monitoring": {
+      "enrollment_tracking": "Monitor against target enrollment timeline",
+      "data_quality_metrics": "Missing data rates, outlier detection",
+      "safety_monitoring": "Adverse event rates and patterns",
+      "efficacy_monitoring": "Interim efficacy analyses per protocol"
+    }
+  },
+  "on_site_monitoring": {
+    "visit_schedule": {
+      "initiation_visit": "Before first patient enrollment",
+      "routine_visits": "Quarterly or after every 50 patients",
+      "close_out_visit": "After last patient last visit"
+    },
+    "monitoring_activities": [
+      "Source data verification (10% sample)",
+      "Informed consent review",
+      "Investigator file review",
+      "Protocol compliance assessment",
+      "Safety data review"
+    ]
+  },
+  "data_safety_monitoring_board": {
+    "composition": [
+      "Independent emergency medicine physician (Chair)",
+      "Biostatistician with clinical trials experience",
+      "AI/ML expert with healthcare experience",
+      "Patient safety expert",
+      "Bioethicist"
+    ],
+    "responsibilities": [
+      "Review safety data and adverse events",
+      "Monitor study conduct and data quality",
+      "Make recommendations on study continuation",
+      "Review interim efficacy analyses"
+    ],
+    "meeting_schedule": "Quarterly or as needed for safety concerns"
+  }
+}

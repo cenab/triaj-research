@@ -1,0 +1,146 @@
+{
+  "protocol_header": {
+    "study_title": "FairTriEdge-FL Clinical Validation Study",
+    "protocol_number": "FTE-FL-001",
+    "protocol_version": "1.0",
+    "protocol_date": "2025-06-16T01:26:10.248561",
+    "sponsor": "FairTriEdge-FL Research Consortium",
+    "phase": "Validation Study (Non-interventional)",
+    "study_type": "Prospective, Multi-center, Observational Study"
+  },
+  "study_objectives": {
+    "primary_objective": {
+      "description": "To evaluate the clinical performance of FairTriEdge-FL AI system in emergency department triage",
+      "primary_endpoint": "Agreement between AI triage recommendation and expert clinical assessment (Cohen's kappa)",
+      "success_criteria": "Cohen's kappa \u2265 0.75 with 95% confidence interval lower bound > 0.70"
+    },
+    "secondary_objectives": [
+      {
+        "description": "Evaluate safety of AI-assisted triage",
+        "endpoint": "Rate of critical under-triage (missed high-acuity cases)",
+        "success_criteria": "Under-triage rate < 5% for critical cases"
+      },
+      {
+        "description": "Assess impact on emergency department efficiency",
+        "endpoint": "Time to treatment for high-acuity patients",
+        "success_criteria": "Non-inferiority to standard triage (margin: 10 minutes)"
+      },
+      {
+        "description": "Evaluate fairness across patient populations",
+        "endpoint": "Performance consistency across demographic groups",
+        "success_criteria": "No significant performance differences by age, gender, or ethnicity"
+      },
+      {
+        "description": "Assess healthcare provider acceptance",
+        "endpoint": "Provider satisfaction and trust scores",
+        "success_criteria": "Mean satisfaction score \u2265 4.0 on 5-point scale"
+      }
+    ]
+  },
+  "study_design": {
+    "design_type": "Prospective, multi-center, non-randomized, observational study",
+    "study_population": "Patients presenting to emergency departments",
+    "study_duration": {
+      "enrollment_period": "12 months",
+      "follow_up_period": "30 days post-ED visit",
+      "total_study_duration": "15 months"
+    },
+    "sample_size": {
+      "target_enrollment": 10000,
+      "power_calculation": {
+        "primary_endpoint": "Cohen's kappa agreement",
+        "expected_kappa": 0.8,
+        "null_hypothesis_kappa": 0.7,
+        "alpha": 0.05,
+        "power": 0.8,
+        "calculated_sample_size": 8500,
+        "inflation_for_dropouts": "15%",
+        "final_sample_size": 10000
+      }
+    }
+  },
+  "study_population": {
+    "inclusion_criteria": [
+      "Patients \u2265 1 year of age presenting to emergency department",
+      "Complete vital signs available at triage",
+      "Informed consent obtained (or waiver approved by IRB)",
+      "English or Spanish speaking (or interpreter available)"
+    ],
+    "exclusion_criteria": [
+      "Patients requiring immediate resuscitation (ESI Level 1)",
+      "Patients with incomplete triage data",
+      "Patients who decline participation",
+      "Prisoners or other vulnerable populations (unless specifically approved)"
+    ],
+    "withdrawal_criteria": [
+      "Patient withdrawal of consent",
+      "Investigator decision for safety reasons",
+      "Protocol violation that compromises data integrity"
+    ]
+  },
+  "study_procedures": {
+    "screening_and_enrollment": {
+      "screening_process": "Automated screening of all ED presentations",
+      "consent_process": "Informed consent or IRB-approved waiver",
+      "randomization": "Not applicable (observational study)"
+    },
+    "data_collection": {
+      "baseline_data": [
+        "Demographics (age, gender, race/ethnicity)",
+        "Presenting complaint and chief complaint",
+        "Vital signs (blood pressure, heart rate, temperature, respiratory rate, oxygen saturation)",
+        "Pain score and mental status",
+        "Medical history and current medications",
+        "Arrival mode (ambulance, walk-in, etc.)"
+      ],
+      "ai_system_data": [
+        "AI triage recommendation (Green/Yellow/Red)",
+        "Confidence score for recommendation",
+        "Key features influencing decision",
+        "Processing time for recommendation"
+      ],
+      "clinical_data": [
+        "Clinical triage decision by nurse",
+        "Physician assessment and diagnosis",
+        "Diagnostic tests ordered and results",
+        "Treatment provided",
+        "Disposition (discharge, admission, transfer)"
+      ],
+      "outcome_data": [
+        "Length of stay in emergency department",
+        "Time to physician evaluation",
+        "Time to treatment initiation",
+        "Patient satisfaction scores",
+        "Adverse events during ED stay",
+        "30-day outcomes (readmission, mortality)"
+      ]
+    }
+  },
+  "statistical_analysis_plan": {
+    "primary_analysis": {
+      "endpoint": "Agreement between AI and clinical triage",
+      "statistical_method": "Cohen's kappa with 95% confidence interval",
+      "analysis_population": "Per-protocol population",
+      "handling_of_missing_data": "Complete case analysis for primary endpoint"
+    },
+    "secondary_analyses": [
+      {
+        "endpoint": "Sensitivity and specificity for high-acuity cases",
+        "method": "Receiver operating characteristic (ROC) analysis"
+      },
+      {
+        "endpoint": "Time to treatment analysis",
+        "method": "Kaplan-Meier survival analysis and Cox regression"
+      },
+      {
+        "endpoint": "Subgroup analyses",
+        "method": "Stratified analysis by age group, gender, and presenting complaint"
+      }
+    ],
+    "interim_analyses": {
+      "planned_interim_analyses": 2,
+      "timing": "After 25% and 50% of target enrollment",
+      "stopping_rules": "Futility or safety concerns based on DSMB recommendations"
+    }
+  }
+}
