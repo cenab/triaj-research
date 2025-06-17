@@ -11,8 +11,8 @@ import json
 import os
 
 try:
-    from .data_preparation import load_and_clean_data
-    from .feature_engineering import feature_engineer_data
+    from ..data_preparation import load_and_clean_data
+    from ..feature_engineering import feature_engineer_data
 except ImportError:
     from data_preparation import load_and_clean_data
     from feature_engineering import feature_engineer_data

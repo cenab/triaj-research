@@ -11,10 +11,10 @@ import json
 import os
 
 try:
-    from .model_architecture import TriageModel
-    from .evaluation_framework import ClinicalMetrics, ComprehensiveEvaluator
-    from .data_preparation import load_and_clean_data
-    from .feature_engineering import feature_engineer_data
+    from ..model_architecture import TriageModel
+    from ..evaluation_framework import ClinicalMetrics, ComprehensiveEvaluator
+    from ..data_preparation import load_and_clean_data
+    from ..feature_engineering import feature_engineer_data
 except ImportError:
     from model_architecture import TriageModel
     from evaluation_framework import ClinicalMetrics, ComprehensiveEvaluator

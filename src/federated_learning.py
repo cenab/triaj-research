@@ -25,7 +25,37 @@ class FederatedClient:
         self.data_loader = data_loader
         self.device = device
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
-        self.criterion = nn.CrossEntropyLoss()
+        
+        # ---------------------------------------------------------------
+        # Advanced clinical-safety loss with per-client class weighting
+        # ---------------------------------------------------------------
+        try:
+            from .advanced_model_architecture import AdvancedClinicalSafetyLoss  # type: ignore
+        except ImportError:  # fallback for script mode
+            from advanced_model_architecture import AdvancedClinicalSafetyLoss  # type: ignore
+
+        # Compute class distribution for this client's dataset
+        try:
+            import numpy as _np
+            from sklearn.utils.class_weight import compute_class_weight as _ccw  # type: ignore
+
+            targets_list = []
+            for batch in data_loader:
+                targets_tensor = batch[-1]
+                if isinstance(targets_tensor, torch.Tensor):
+                    targets_list.append(targets_tensor.cpu().numpy())
+                else:
+                    targets_list.append(_np.asarray(targets_tensor))
+            targets_all = _np.concatenate(targets_list)
+            unique_classes = _np.unique(targets_all)
+            class_w = _ccw("balanced", classes=unique_classes, y=targets_all)
+            class_weights_tensor = torch.tensor(class_w, dtype=torch.float32).to(self.device)
+        except Exception:
+            # Fallback: uniform weights
+            num_classes_fallback = max(2, int(self.model(*[torch.zeros(1, p.size(1) if hasattr(p, 'size') else 1) for p in list(self.model.parameters())[:1]] ).shape[-1])) if hasattr(self.model, 'classifier') else 3
+            class_weights_tensor = torch.ones(num_classes_fallback, device=self.device)
+
+        self.criterion = AdvancedClinicalSafetyLoss(class_weights=class_weights_tensor)
         
         # Privacy configuration
         self.privacy_config = privacy_config or {
@@ -75,13 +105,14 @@ class FederatedClient:
         
         # Training loop
         for epoch in range(epochs):
-            for numerical_data, boolean_data, temporal_data, targets in self.data_loader:
-                numerical_data, boolean_data, temporal_data, targets = \
-                    numerical_data.to(self.device), boolean_data.to(self.device), \
-                    temporal_data.to(self.device), targets.to(self.device)
+            for batch in self.data_loader:
+                *feature_tensors, targets = batch  # Unpack arbitrary feature groups
+                # Move tensors to device
+                feature_tensors = [t.to(self.device) for t in feature_tensors]
+                targets = targets.to(self.device)
 
                 self.optimizer.zero_grad()
-                outputs = self.model(numerical_data, boolean_data, temporal_data)
+                outputs = self.model(*feature_tensors)
                 loss = self.criterion(outputs, targets)
                 loss.backward()
                 
@@ -156,11 +187,11 @@ class FederatedClient:
         correct = 0
         total = 0
         with torch.no_grad():
-            for numerical_data, boolean_data, temporal_data, targets in self.data_loader:
-                numerical_data, boolean_data, temporal_data, targets = \
-                    numerical_data.to(self.device), boolean_data.to(self.device), \
-                    temporal_data.to(self.device), targets.to(self.device)
-                outputs = self.model(numerical_data, boolean_data, temporal_data)
+            for batch in self.data_loader:
+                *feature_tensors, targets = batch
+                feature_tensors = [t.to(self.device) for t in feature_tensors]
+                targets = targets.to(self.device)
+                outputs = self.model(*feature_tensors)
                 _, predicted = torch.max(outputs.data, 1)
                 total += targets.size(0)
                 correct += (predicted == targets).sum().item()
@@ -220,11 +251,11 @@ class FederatedServer:
         correct = 0
         total = 0
         with torch.no_grad():
-            for numerical_data, boolean_data, temporal_data, targets in test_data_loader:
-                numerical_data, boolean_data, temporal_data, targets = \
-                    numerical_data.to(self.device), boolean_data.to(self.device), \
-                    temporal_data.to(self.device), targets.to(self.device)
-                outputs = self.global_model(numerical_data, boolean_data, temporal_data)
+            for batch in test_data_loader:
+                *feature_tensors, targets = batch
+                feature_tensors = [t.to(self.device) for t in feature_tensors]
+                targets = targets.to(self.device)
+                outputs = self.global_model(*feature_tensors)
                 _, predicted = torch.max(outputs.data, 1)
                 total += targets.size(0)
                 correct += (predicted == targets).sum().item()
@@ -1400,18 +1431,15 @@ def monitor_federated_fairness(global_model, client_data_loaders, device, fairne
                 global_model.eval()
                 with torch.no_grad():
                     for batch in data_loader:
-                        if len(batch) == 4:  # (numerical, boolean, temporal, labels)
-                            numerical_data, boolean_data, temporal_data, labels = batch
-                            numerical_data = numerical_data.to(device)
-                            boolean_data = boolean_data.to(device)
-                            temporal_data = temporal_data.to(device)
-                            labels = labels.to(device)
-                            
-                            outputs = global_model(numerical_data, boolean_data, temporal_data)
-                            preds = torch.argmax(outputs, dim=1)
-                            
-                            all_preds.extend(preds.cpu().numpy())
-                            all_labels.extend(labels.cpu().numpy())
+                        *feature_tensors, targets = batch  # Unpack arbitrary feature groups
+                        feature_tensors = [t.to(device) for t in feature_tensors]
+                        targets = targets.to(device)
+                        
+                        outputs = global_model(*feature_tensors)
+                        preds = torch.argmax(outputs, dim=1)
+                        
+                        all_preds.extend(preds.cpu().numpy())
+                        all_labels.extend(targets.cpu().numpy())
                 
                 if len(all_preds) == 0:
                     continue

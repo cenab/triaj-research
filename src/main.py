@@ -5,6 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import time # Import time for latency measurement
 from datetime import datetime
+import argparse
 
 try:
     from .data_preparation import load_and_clean_data
@@ -15,6 +16,7 @@ try:
     from .federated_learning import FederatedClient, FederatedServer, apply_domain_adaptation, monitor_data_drift, apply_differential_privacy, apply_robust_aggregation, apply_communication_efficiency, monitor_federated_fairness, get_model_parameters, set_model_parameters, simulate_byzantine_attacks
     from .explainable_ai import generate_feature_importance, generate_llm_explanation, extract_boolean_rules
     from .evaluation_framework import ComprehensiveEvaluator, ClinicalMetrics, FairnessEvaluator, PerformanceBenchmark
+    from .kaggle_data import load_kaggle_triage_data, feature_engineer_kaggle_data
 except ImportError:
     # Direct imports when running as script
     from data_preparation import load_and_clean_data
@@ -25,24 +27,280 @@ except ImportError:
     from federated_learning import FederatedClient, FederatedServer, apply_domain_adaptation, monitor_data_drift, apply_differential_privacy, apply_robust_aggregation, apply_communication_efficiency, monitor_federated_fairness, get_model_parameters, set_model_parameters, simulate_byzantine_attacks
     from explainable_ai import generate_feature_importance, generate_llm_explanation, extract_boolean_rules
     from evaluation_framework import ComprehensiveEvaluator, ClinicalMetrics, FairnessEvaluator, PerformanceBenchmark
+    try:
+        from kaggle_data import load_kaggle_triage_data, feature_engineer_kaggle_data
+    except ImportError:
+        load_kaggle_triage_data = None  # type: ignore
+        feature_engineer_kaggle_data = None  # type: ignore
 
 def main():
-    file_path = 'triaj_data.csv'
-    
-    print("--- Phase 1: Data Preparation and Simulation Environment Setup ---")
-    print("Step 1: Loading and Initial Cleaning Data...")
-    df_cleaned = load_and_clean_data(file_path)
-    print("Initial data cleaning complete.")
-    print(f"Shape after cleaning: {df_cleaned.shape}")
+    parser = argparse.ArgumentParser(description="FairTriEdge-FL end-to-end pipeline")
+    parser.add_argument("--dataset", choices=["triaj", "kaggle"], default="triaj",
+                        help="Dataset to use")
+    parser.add_argument("--model", choices=["basic", "advanced"], default="basic",
+                        help="Model type: basic=TriageModel, advanced=AdvancedHierarchicalTriageModel")
+    args = parser.parse_args()
 
-    print("\nStep 2: Feature Engineering Data...")
-    df_engineered = feature_engineer_data(df_cleaned.copy())
-    print("Feature engineering complete.")
-    print(f"Shape after feature engineering: {df_engineered.shape}")
-    print("\nFirst 5 rows of Feature Engineered Data:")
-    print(df_engineered.head())
-    print("\nTarget variable distribution:")
-    print(df_engineered['doğru triyaj_encoded'].value_counts())
+    use_kaggle = args.dataset == "kaggle"
+    use_advanced_model = args.model == "advanced"
+
+    print("--- Phase 1: Data Preparation and Simulation Environment Setup ---")
+
+    if use_kaggle and use_advanced_model:
+        # Advanced path – use enhanced feature engineering
+        # Attempt relative import first (package execution), fall back to absolute for script execution
+        try:
+            from .kaggle_data import load_kaggle_triage_data as _load_kag, feature_engineer_kaggle_data as _fe_min
+        except ImportError:
+            from kaggle_data import load_kaggle_triage_data as _load_kag, feature_engineer_kaggle_data as _fe_min
+        # Import advanced Kaggle feature-engineering util
+        try:
+            from .experimental.kaggle_enhanced_final_fix_v2 import advanced_kaggle_feature_engineering as _fe_adv  # type: ignore
+        except Exception:
+            try:
+                from experimental.kaggle_enhanced_final_fix_v2 import advanced_kaggle_feature_engineering as _fe_adv  # type: ignore
+            except Exception:
+                _fe_adv = None
+
+        if _fe_adv is None:
+            raise ImportError("advanced_kaggle_feature_engineering not available; ensure optional deps installed")
+
+        print("Step 1: Loading Kaggle dataset…")
+        kag_df_raw = _load_kag()
+        df_engineered, vital_feats, symptom_feats, risk_feats, context_feats, lab_feats, interaction_feats = _fe_adv(kag_df_raw)
+
+        num_classes = df_engineered['esi_3class'].nunique()
+
+        # Import advanced model architecture
+        try:
+            from .advanced_model_architecture import AdvancedHierarchicalTriageModel  # type: ignore
+        except ImportError:
+            from advanced_model_architecture import AdvancedHierarchicalTriageModel  # type: ignore
+
+        model = AdvancedHierarchicalTriageModel(
+            num_vital_features=len(vital_feats),
+            num_symptom_features=len(symptom_feats),
+            num_risk_features=len(risk_feats),
+            num_context_features=len(context_feats),
+            num_lab_features=len(lab_feats),
+            num_interaction_features=len(interaction_feats),
+            num_classes=num_classes,
+        )
+
+        print("\nAdvanced Hierarchical Triage Model instantiated:")
+        print(model)
+        print("Feature-group sizes:")
+        print(f"  vitals           : {len(vital_feats)}")
+        print(f"  symptoms         : {len(symptom_feats)}")
+        print(f"  risk factors     : {len(risk_feats)}")
+        print(f"  context          : {len(context_feats)}")
+        print(f"  lab values       : {len(lab_feats)}")
+        print(f"  interactions     : {len(interaction_feats)}")
+
+        print("\n▶️  Starting *preview* federated-learning run with the advanced Kaggle model (3 rounds)…")
+
+        # -----------------------------------------------------------------
+        # Build PyTorch tensors for six feature groups + target
+        # -----------------------------------------------------------------
+        all_features = (
+            vital_feats + symptom_feats + risk_feats + context_feats + lab_feats + interaction_feats
+        )
+
+        # Ensure columns exist and fill NaNs
+        df_engineered[all_features] = df_engineered[all_features].fillna(0)
+
+        # -------------------------------------------------------------
+        # Sub-sample to manageable size: 5 clients × 3k rows = 15k rows
+        # -------------------------------------------------------------
+        desired_total = 15000
+        if len(df_engineered) > desired_total:
+            df_engineered = df_engineered.sample(n=desired_total, random_state=42).reset_index(drop=True)
+
+        import torch
+        from torch.utils.data import TensorDataset, DataLoader, random_split
+
+        X_vital = torch.tensor(df_engineered[vital_feats].values, dtype=torch.float32)
+        X_symptom = torch.tensor(df_engineered[symptom_feats].values, dtype=torch.float32)
+        X_risk = torch.tensor(df_engineered[risk_feats].values, dtype=torch.float32)
+        X_context = torch.tensor(df_engineered[context_feats].values, dtype=torch.float32)
+        X_lab = torch.tensor(df_engineered[lab_feats].values, dtype=torch.float32)
+        X_interaction = torch.tensor(df_engineered[interaction_feats].values, dtype=torch.float32)
+        y_tensor = torch.tensor(df_engineered['esi_3class'].values, dtype=torch.long)
+
+        full_dataset_fl = TensorDataset(
+            X_vital,
+            X_symptom,
+            X_risk,
+            X_context,
+            X_lab,
+            X_interaction,
+            y_tensor,
+        )
+
+        # Split into train / test
+        train_size_fl = int(0.8 * len(full_dataset_fl))
+        test_size_fl = len(full_dataset_fl) - train_size_fl
+        train_dataset_fl, global_test_dataset_fl = random_split(
+            full_dataset_fl,
+            [train_size_fl, test_size_fl],
+            generator=torch.Generator().manual_seed(42),
+        )
+
+        # Split train set across clients (3 clients)
+        num_clients_fl = 8  # increased client count
+        len_per_client = len(train_dataset_fl) // num_clients_fl
+        lengths_fl = [len_per_client] * num_clients_fl
+        remainder_fl = len(train_dataset_fl) % num_clients_fl
+        for i in range(remainder_fl):
+            lengths_fl[i] += 1
+
+        client_datasets_fl = random_split(
+            train_dataset_fl,
+            lengths_fl,
+            generator=torch.Generator().manual_seed(42),
+        )
+
+        # Ensure each client provides ~3 000 samples per epoch via replacement sampling
+        desired_samples_per_client = 3000
+        client_data_loaders_fl = []
+        from torch.utils.data import RandomSampler
+
+        # Build a class-balanced sampler per client (inverse-frequency weights)
+        import numpy as _np
+        from torch.utils.data import WeightedRandomSampler
+
+        for ds in client_datasets_fl:
+            # extract targets
+            labels = _np.array([ds[i][-1].item() for i in range(len(ds))])
+            class_sample_count = _np.bincount(labels, minlength=num_classes)
+            # avoid div-by-zero
+            class_weights = 1.0 / (class_sample_count + 1e-6)
+            sample_weights = class_weights[labels]
+            sampler = WeightedRandomSampler(
+                weights=sample_weights,
+                num_samples=desired_samples_per_client,
+                replacement=True,
+            )
+            client_data_loaders_fl.append(DataLoader(ds, batch_size=64, sampler=sampler))
+        
+        print(f"Created {num_clients_fl} clients × {desired_samples_per_client} samples each (with replacement).")
+        global_test_loader_fl = DataLoader(global_test_dataset_fl, batch_size=64, shuffle=False)
+
+        try:
+            from .federated_learning import (
+                FederatedClient,
+                FederatedServer,
+                get_model_parameters,
+                set_model_parameters,
+                apply_robust_aggregation,
+            )
+        except ImportError:
+            from federated_learning import (
+                FederatedClient,
+                FederatedServer,
+                get_model_parameters,
+                set_model_parameters,
+                apply_robust_aggregation,
+            )
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        global_model_fl = AdvancedHierarchicalTriageModel(
+            num_vital_features=len(vital_feats),
+            num_symptom_features=len(symptom_feats),
+            num_risk_features=len(risk_feats),
+            num_context_features=len(context_feats),
+            num_lab_features=len(lab_feats),
+            num_interaction_features=len(interaction_feats),
+            num_classes=num_classes,
+        ).to(device)
+
+        server_fl = FederatedServer(global_model_fl, device)
+
+        clients_fl = []
+        for idx, loader in enumerate(client_data_loaders_fl):
+            client_model_fl = AdvancedHierarchicalTriageModel(
+                num_vital_features=len(vital_feats),
+                num_symptom_features=len(symptom_feats),
+                num_risk_features=len(risk_feats),
+                num_context_features=len(context_feats),
+                num_lab_features=len(lab_feats),
+                num_interaction_features=len(interaction_feats),
+                num_classes=num_classes,
+            ).to(device)
+
+            set_model_parameters(client_model_fl, get_model_parameters(global_model_fl))
+            clients_fl.append(
+                FederatedClient(
+                    f"client_{idx}", client_model_fl, loader, device, privacy_config=None
+                )
+            )
+
+        num_rounds = 30
+        from time import perf_counter
+
+        local_epochs = 2  # keep epochs modest since dataset per client is larger
+
+        # ------------------- FedOpt setup (Adam server) -------------------
+        server_opt = torch.optim.Adam(server_fl.global_model.parameters(), lr=0.001, betas=(0.9, 0.99))
+
+        for rnd in range(num_rounds):
+            print(f"\n--- Advanced FL Round {rnd + 1}/{num_rounds} ---")
+            client_updates = []
+            t0 = perf_counter()
+            for client in clients_fl:
+                client.set_parameters(get_model_parameters(server_fl.global_model))
+                params, num_samples, _ = client.train(epochs=local_epochs)
+                client_updates.append((params, num_samples))
+            aggregated_params = apply_robust_aggregation(client_updates, method="fedavg")
+
+            # FedAdam update: use aggregated_params as target, current params as source
+            current_params = list(server_fl.global_model.parameters())
+            for p, new_val in zip(current_params, aggregated_params):
+                # gradient = current − aggregated (move towards aggregated)
+                p.grad = (p.data - torch.tensor(new_val, device=device, dtype=p.dtype))
+            server_opt.step()
+            server_opt.zero_grad(set_to_none=True)
+            server_fl.evaluate_global_model(global_test_loader_fl)
+            print(f"Round duration: {perf_counter() - t0:.2f}s")
+
+        print("\n✅  Advanced federated-learning preview complete.")
+        return
+
+    if use_kaggle:
+        if load_kaggle_triage_data is None:
+            raise ImportError("kaggle_data module is not available. Did you install optional deps?")
+
+        print("Step 1: Loading Kaggle dataset…")
+        kag_df_raw = load_kaggle_triage_data()
+        df_cleaned, feature_cols = feature_engineer_kaggle_data(kag_df_raw)
+        print("Kaggle feature-engineering complete.")
+
+    else:
+        file_path = 'triaj_data.csv'
+        print("Step 1: Loading and Initial Cleaning Data...")
+        df_cleaned = load_and_clean_data(file_path)
+        print("Initial data cleaning complete.")
+        print(f"Shape after cleaning: {df_cleaned.shape}")
+
+    if not use_kaggle and not use_advanced_model:
+        print("\nStep 2: Feature Engineering Data...")
+        df_engineered = feature_engineer_data(df_cleaned.copy())
+        print("Feature engineering complete.")
+        print(f"Shape after feature engineering: {df_engineered.shape}")
+        print("\nFirst 5 rows of Feature Engineered Data:")
+        print(df_engineered.head())
+        print("\nTarget variable distribution:")
+        print(df_engineered['doğru triyaj_encoded'].value_counts())
+    else:
+        df_engineered = df_cleaned  # already engineered in Kaggle path
+        print(f"Enhanced Kaggle dataset shape: {df_engineered.shape}")
+        print("Target distribution:")
+        print(df_engineered['doğru triyaj_encoded'].value_counts())
+
+        print("\nℹ️  Kaggle integration is in *preview* mode – downstream FL pipeline still "
+              "expects the original feature schema. Skipping the heavier stages for now.")
+        return  # Early exit until FL refactor supports Kaggle schema
 
     print("\nStep 3: Simulated Multi-Site Data Generation...")
     # Example: Random split into 3 clients
@@ -201,7 +459,7 @@ def main():
     train_dataset_fl, global_test_dataset_fl = random_split(full_dataset_fl, [train_size_fl, test_size_fl], generator=torch.Generator().manual_seed(42))
 
     # Simulate clients from the train_dataset
-    num_clients_fl = 3
+    num_clients_fl = 8  # increased client count
     
     # Calculate lengths for random_split to handle remainders
     len_per_client = len(train_dataset_fl) // num_clients_fl
@@ -261,7 +519,7 @@ def main():
             
             # Simulate on-device model adaptation with differential privacy
             print(f"Client {client.client_id}: Performing local training with differential privacy...")
-            params, num_samples, privacy_metrics = client.train(epochs=1, apply_dp=True)
+            params, num_samples, privacy_metrics = client.train(epochs=local_epochs, apply_dp=True)
             client_updates_fl.append((params, num_samples))
             privacy_metrics_round.append(privacy_metrics)
         

@@ -1,0 +1,121 @@
+{
+  "timestamp": "2025-06-16T22:02:42.860418",
+  "clinical_metrics": {
+    "overall_accuracy": 0.18518518518518517,
+    "class_metrics": {
+      "Green": {
+        "precision": 0.18518518518518517,
+        "recall": 1.0,
+        "f1_score": 0.3125
+      },
+      "Yellow": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0
+      },
+      "Red": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0
+      }
+    },
+    "confusion_matrix": [
+      [
+        20,
+        0,
+        0
+      ],
+      [
+        69,
+        0,
+        0
+      ],
+      [
+        19,
+        0,
+        0
+      ]
+    ],
+    "clinical_safety": {
+      "under_triage_rate": 0.8148148148148148,
+      "over_triage_rate": 0.0,
+      "critical_under_triage_rate": 1.0,
+      "critical_sensitivity": 0.0
+    }
+  },
+  "fairness_metrics": {
+    "overall_fairness_score": 0.8583294846843036,
+    "group_metrics": {
+      "age_group": {
+        "1": {
+          "sample_size": "75",
+          "accuracy": 0.2,
+          "precision": 0.04,
+          "recall": 0.2,
+          "f1_score": 0.06666666666666667,
+          "positive_rate": 0.0,
+          "critical_rate": 0.0
+        },
+        "2": {
+          "sample_size": "33",
+          "accuracy": 0.15151515151515152,
+          "precision": 0.02295684113865932,
+          "recall": 0.15151515151515152,
+          "f1_score": 0.03987240829346092,
+          "positive_rate": 0.0,
+          "critical_rate": 0.0
+        }
+      },
+      "gender": {
+        "Female": {
+          "sample_size": "40",
+          "accuracy": 0.2,
+          "precision": 0.04,
+          "recall": 0.2,
+          "f1_score": 0.06666666666666667,
+          "positive_rate": 0.0,
+          "critical_rate": 0.0
+        },
+        "Male": {
+          "sample_size": "68",
+          "accuracy": 0.17647058823529413,
+          "precision": 0.03114186851211073,
+          "recall": 0.17647058823529413,
+          "f1_score": 0.05294117647058823,
+          "positive_rate": 0.0,
+          "critical_rate": 0.0
+        }
+      }
+    },
+    "fairness_violations": [],
+    "bias_summary": {}
+  },
+  "performance_metrics": {
+    "avg_inference_time_ms": 0.007754191756248474,
+    "throughput_samples_per_sec": 128962.50588517895,
+    "model_size_mb": 0.2723503112792969,
+    "total_parameters": 71395,
+    "total_samples_tested": 108
+  },
+  "federated_metrics": {
+    "total_round_time": 0.0313107967376709,
+    "avg_client_training_time": 0.009861071904500326,
+    "aggregation_time": 0.00021600723266601562,
+    "evaluation_time": 0.0015077590942382812,
+    "num_clients": 3,
+    "communication_overhead": 153
+  },
+  "summary": {
+    "overall_performance": "Poor",
+    "key_findings": [
+      "Overall accuracy: 0.185",
+      "Critical case sensitivity: 0.000",
+      "Fairness score: 0.858",
+      "Average inference time: 0.01ms"
+    ],
+    "recommendations": [
+      "Critical: Reduce under-triage rate for patient safety"
+    ],
+    "risk_assessment": "High"
+  }
+}
