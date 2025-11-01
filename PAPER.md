@@ -3,6 +3,9 @@
 \usepackage[utf8]{inputenc}
 \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
+% Allow multi-line displays to break more naturally in IEEEtran
+\interdisplaylinepenalty=2500
+\allowdisplaybreaks[2]
 \usepackage{graphicx}
 \usepackage{algorithmic}
 \usepackage{textcomp}
@@ -26,14 +29,31 @@
 \newcommand{\CentralECE}{0.027}
 \newcommand{\CentralBrier}{0.033}
 
-% Federated baseline (ESI-5, 5 clients, 10 rounds; representative run)
-\newcommand{\FLAcc}{0.575}
-\newcommand{\FLAccCI}{[0.572, 0.578]}
-\newcommand{\FLMacroFOne}{0.510}
-\newcommand{\FLMacroFOneCI}{[0.505, 0.515]}
-\newcommand{\FLNLL}{1.382}
-\newcommand{\FLECE}{0.249}
-\newcommand{\FLBrier}{0.123}
+% Federated baseline (ESI-5, representative flat model)
+\newcommand{\FLAcc}{0.541}
+\newcommand{\FLMacroFOne}{0.457}
+\newcommand{\FLNLL}{0.970}
+\newcommand{\FLECE}{0.194}
+\newcommand{\FLBrier}{0.111}
+\newcommand{\FLAccCI}{[0.537, 0.545]}
+\newcommand{\FLMacroFOneCI}{[0.452, 0.462]}
+
+% Federated red-focused (ESI-5, hierarchical)
+\newcommand{\FLRFAcc}{0.801}
+\newcommand{\FLRFMFOne}{0.788}
+\newcommand{\FLRFNLL}{0.370}
+\newcommand{\FLRFECE}{0.047}
+\newcommand{\FLRFBrier}{0.040}
+\newcommand{\FLRFAccCI}{[0.798, 0.804]}
+\newcommand{\FLRFMFOneCI}{[0.784, 0.791]}
+
+% Safety metrics (selected)
+\newcommand{\CentralCritSens}{0.956}
+\newcommand{\CentralUnder}{0.014}
+\newcommand{\FLCritSens}{0.310}
+\newcommand{\FLUnder}{0.367}
+\newcommand{\FLRFCritSens}{0.924}
+\newcommand{\FLRFUnder}{0.123}
 
 % Model + system
 \newcommand{\ModelParams}{67{,}925}
@@ -58,11 +78,11 @@ Emergency departments must identify the most urgent patients quickly and safely.
 
 Our model reads six groups of information (vitals, symptoms, risks, context, labs, and simple interactions), combines them with a lightweight attention mechanism, and predicts the ESI level. We add a safety‑aware training objective that makes under‑triage (predicting a milder level than the truth) much more costly than over‑triage, and we add an extra penalty for missing truly critical cases (ESI1–2). After training, we calibrate predicted probabilities and set decision thresholds with either a small search or a simple conformal rule that guarantees high recall for critical cases on validation data.
 
-On 558k encounters, the centralized model reaches \CentralAcc{} accuracy (Macro‑F1 \CentralMacroFOne{}), with reliable probabilities (NLL \CentralNLL{}, ECE \CentralECE{}, Brier \CentralBrier{}). In a representative 5‑client, 10‑round federated run, the global model achieves \FLAcc{} accuracy (Macro‑F1 \FLMacroFOne{}). Although federated accuracy is lower under these default settings, it provides a solid baseline to improve with more rounds, personalization, and robust aggregation. We assume an honest‑but‑curious server (no secure aggregation or differential privacy) and report communication cost per round to inform privacy‑enhancing deployments.
+On 558k encounters, the centralized model reaches \CentralAcc{} accuracy (Macro‑F1 \CentralMacroFOne{}), with reliable probabilities (NLL \CentralNLL{}, ECE \CentralECE{}, Brier \CentralBrier{}). In a representative 5‑client, 10‑round federated run, the global model achieves \FLAcc{} accuracy (Macro‑F1 \FLMacroFOne{}). Although federated accuracy is lower under these default settings, it provides a solid baseline to improve with more rounds, personalization, and robust aggregation. In addition to secure aggregation, our implementation optionally supports differentially private training via DP‑SGD (Opacus), with per‑round/client privacy accounting (\(\varepsilon,\delta\)) to quantify privacy–utility trade‑offs.
 \end{abstract}
 
 \begin{IEEEkeywords}
-Triage, federated learning, multi-modal modeling, hierarchical classification, clinical safety, privacy-enhancing AI
+Triage, federated learning, multi-modal modeling, hierarchical classification, clinical safety, differential privacy, privacy-enhancing AI
 \end{IEEEkeywords}
 
 \section{Introduction}\label{sec:intro}
@@ -79,7 +99,7 @@ Our approach follows three simple ideas:
 
 \textbf{Summary of results.} On the 558{,}029-encounter corpus, the centralized advanced model attains \CentralAcc{} accuracy (Macro-F1 \CentralMacroFOne{}). With \NumClients{} clients and \NumRounds{} rounds, a representative FL baseline reaches \FLAcc{} accuracy (Macro-F1 \FLMacroFOne{}). The backbone has \ModelParams{} parameters (\ModelSizeMB{}\,MB FP32), yielding low-latency inference and modest per-round communication (\ModelSizeMB{}\,MB uplink + \ModelSizeMB{}\,MB downlink per client).
 
-\textbf{Scope and threat model.} We assume an honest-but-curious server and do not apply secure aggregation or DP in these experiments. We therefore report communication costs, calibration quality, and robustness under non-IID clients to support privacy-\emph{enhancing} (not airtight privacy-preserving) deployments; we discuss integration of secure aggregation and client-side DP-SGD as future work.
+\textbf{Scope and threat model.} We assume an honest-but-curious server. Our code supports client-side DP-SGD and reports per-round/client privacy accounting, but unless explicitly noted we present accuracy baselines \emph{without} DP and \emph{without} secure aggregation. We therefore report communication costs, calibration quality, and robustness under non-IID clients to support privacy-\emph{enhancing} deployments; integrating secure aggregation and always-on DP is straightforward within our release.
 
 \textbf{Contributions.}
 \begin{itemize}
@@ -159,9 +179,10 @@ We apply temperature calibration and optional per-class operating-point offsets 
 
 \subsection{Hierarchical Ensemble (Generalized)}
 We generalize the legacy 3-class Red-first design to ESI-5. A gate head learns Non-Critical vs Critical (binary). Specialist heads classify within the non-critical band (e.g., ESI5–3) and the critical band (ESI2–1). Probabilities compose as
-\begin{equation}
-\Pr(c)=\Pr(\text{NonCrit})\,\Pr(c\,|\,\text{NonCrit})\ \ \text{or}\ \ \Pr(c)=\Pr(\text{Crit})\,\Pr(c\,|\,\text{Crit})\,,
-\end{equation}
+\begin{align}
+\Pr(c) &= \Pr(\text{NonCrit})\,\Pr(c\,|\,\text{NonCrit})\\
+\Pr(c) &= \Pr(\text{Crit})\,\Pr(c\,|\,\text{Crit})\,,
+\end{align}
 depending on whether $c$ lies in the non-critical or critical band. The 3-class variant is recovered by using a gate and a non-critical detail head.
 
 \subsection{Implementation Details and Hyperparameters}
@@ -181,9 +202,10 @@ Batch size & 128--256 (all modes) \\
 Epochs (centralized) & 15--25 (select best by val acc) \\
 Dropout & 0.1--0.4 by block \\
 Grad clipping & $\Vert\nabla\Vert_2 \le 1.0$ \\
-Loss weights & CE + Focal + Cost + Critical (configurable) \\
+DP-SGD (optional) & Opacus; noise=1.0, max\_grad\_norm=1.0, $\delta=10^{-5}$ \\
+Loss weights & CE + Focal + Cost + Critical \\
 Focal $(\alpha,\gamma)$ & $(0.25,\,2.0)$ \\
-Temperature search & Val-optimized $T$ (scalar; grid or L-BFGS) \\
+Temperature search & Val-optimized $T$ (scalar; L-BFGS) \\
 Operating-point sweep & Per-class offsets with safety constraints \\
 \bottomrule
 \end{tabular}
@@ -193,9 +215,13 @@ Operating-point sweep & Per-class offsets with safety constraints \\
 \textbf{Safety-aware loss.} We train with three simple ideas: (i) a standard loss that accounts for class imbalance, (ii) a focal term that pays more attention to hard examples~\cite{lin2017}, and (iii) a cost that makes under‑triage much more expensive than over‑triage (and more expensive the further the miss). We also add a small extra penalty whenever a critical case (ESI1–2) is predicted as non‑critical. For the hierarchical model, we compute the loss on the final class probabilities.
 
 Putting these pieces together, the training objective is
-\begin{equation}
-\mathcal{L}=\mathcal{L}_{\text{CE}}+\lambda_\text{f}\,\mathcal{L}_{\text{focal}}(\alpha{=}0.25,\,\gamma{=}2.0)+\lambda_\text{s}\,\mathbb{E}[M_{y,\hat{y}}]+\lambda_\text{c}\,\mathbf{1}[y\in\{\text{ESI2,ESI1}\},\ \hat{y}\notin\{\text{ESI2,ESI1}\}]\,.
-\end{equation}
+\begin{align}
+\mathcal{L}
+&= \mathcal{L}_{\text{CE}}
+  + \lambda_{\text{f}}\,\mathcal{L}_{\text{focal}}(\alpha{=}0.25,\,\gamma{=}2.0)
+  + \lambda_{\text{s}}\,\mathbb{E}[M_{y,\hat{y}}] \\[-2pt]
+&\quad + \lambda_{\text{c}}\,\mathbf{1}[y\in\{\text{ESI2,ESI1}\},\ \hat{y}\notin\{\text{ESI2,ESI1}\}]\,.
+\end{align}
 For ESI‑5, the cost $M$ follows a simple rule: under‑triage gets a larger penalty the more severe the miss; over‑triage is penalized lightly and grows slowly. This encourages the model to avoid dangerous misses while tolerating some safe over‑triage.
 
 \textbf{Calibration and decisions.} After training, we adjust a single temperature on the validation set to make probabilities reliable~\cite{guo2017}. We then set simple per‑class offsets (with extra attention to the top‑2 critical classes) or use a conformal rule that guarantees high recall for critical cases on validation. One option is to pick the class with the lowest expected clinical cost under the calibrated probabilities:
@@ -219,59 +245,98 @@ We split the dataset into train/val/test (60/20/20), train with Adam (batch 128-
 
 \paragraph*{Client partitioning and aggregation.} IID sharding and non-IID Dirichlet splits are supported. Robust aggregation (median/trim) and FedAvgM are provided. Optional per-client personalization and differentially private training are available; for privacy-aware training, group normalization is used in place of batch normalization.
 
+\section{Differential Privacy}\label{sec:dp}
+\textbf{Mechanism.} We implement differentially private stochastic gradient descent (DP-SGD) with per-sample clipping and Gaussian noise via Opacus. When DP is enabled in the federated pipeline, we automatically replace \emph{BatchNorm} with \emph{GroupNorm} to satisfy Opacus compatibility; centralized training attempts the same DP setup and falls back gracefully if Opacus is unavailable. Privacy is reported as $(\varepsilon, \delta)$ with default $\delta{=}10^{-5}$.
+
+\textbf{Configuration.} Key parameters are the noise multiplier (default 1.0), the maximum gradient norm for clipping (default 1.0), and $\delta$ (default $10^{-5}$). The effective sampling rate equals batch size divided by the number of local training examples. The FL runner exposes \texttt{--dp}, \texttt{--dp-noise-multiplier}, \texttt{--dp-max-grad-norm}, and \texttt{--dp-delta} flags; centralized runs mirror these through configuration.
+
+\textbf{Accounting and reporting.} In federated runs, each client tracks its $\varepsilon$ per round via Opacus; we summarise round privacy by the maximum client $\varepsilon$ and log \texttt{epsilon\_per\_round} alongside metrics in the JSON report. In centralized DP, we record $\varepsilon$ per epoch. These records support privacy–utility analyses (e.g., validation accuracy vs $\varepsilon$ across rounds).
+
+\textbf{Practical note (attention layers).} PyTorch's stock \texttt{nn.MultiheadAttention} is not directly supported by Opacus' grad-sample hooks. In our release, DP-SGD engages fully when the attention block is replaced by a DP-compatible module (e.g., Opacus' \emph{DPMultiheadAttention}) or disabled; otherwise training proceeds without DP while preserving all other settings, and the pipeline reports this condition.
+
 \section{Evaluation Protocol}
 We report overall accuracy; per‑class precision, recall, and F1; and clinical safety: how often the model under‑triages or over‑triages, and how sensitive it is to critical cases (ESI1–2). We also show confusion matrices. When available, we report fairness (e.g., by gender and age groups) and simple SHAP analyses to explain which features matter most.
 
 \subsection{Reliability and Calibration Quality}
-To assess reliability beyond accuracy, we report negative log-likelihood (NLL) and expected calibration error (ECE) per class and overall. Temperature scaling~\cite{guo2017} is chosen on the validation set to minimize NLL. Operating-point selection aligns with clinical targets without retraining.
-
-For the centralized model: NLL $=\CentralNLL$, ECE $=\CentralECE$, Brier $=\CentralBrier$, Acc $\CentralAcc{}\,\CentralAccCI$, Macro-F1 $\CentralMacroFOne{}\,\CentralMacroFOneCI$. For a representative FL baseline (Table~\ref{tab:metrics}): NLL $=\FLNLL$, ECE $=\FLECE$, Brier $=\FLBrier$, Acc $\FLAcc{}\,\FLAccCI$, Macro-F1 $\FLMacroFOne{}\,\FLMacroFOneCI$.
-
-\begin{table}[t]
-\centering
-\caption{Reliability metrics across systems (ESI-5; rounded to 3 decimals).}
-\label{tab:reliability}
-\small
-\begin{tabular}{lcccc}
-\toprule
-System & NLL & ECE & Brier & Acc / Macro-F1 (95\% CI) \\
-\midrule
-Centralized & \CentralNLL & \CentralECE & \CentralBrier & \CentralAcc{} \CentralAccCI{} / \CentralMacroFOne{} \CentralMacroFOneCI{} \\
-FL Baseline & \FLNLL & \FLECE & \FLBrier & \FLAcc{} \FLAccCI{} / \FLMacroFOne{} \FLMacroFOneCI{} \\
-\bottomrule
-\end{tabular}
-\end{table}
+To assess reliability beyond accuracy, we report negative log‑likelihood (NLL), expected calibration error (ECE), and the Brier score. Temperature scaling~\cite{guo2017} on the validation set improves probability quality; operating‑point selection then aligns with clinical targets.
 
 \section{Results}\label{sec:results}
 \subsection{Centralized vs Federated (Baseline)}
-The centralized model reaches \CentralAcc{} accuracy. Under a \NumClients{}‑client, \NumRounds{}‑round federated baseline, the global model achieves \FLAcc{} accuracy. Federated validation accuracy improves across rounds and then stabilizes.
+The centralized model reaches \CentralAcc{} accuracy. Under a \NumClients{}‑client, \NumRounds{}‑round federated baseline, the global model achieves \FLAcc{} accuracy. Federated validation accuracy improves across rounds and then stabilizes. Figure~\ref{fig:fl-baseline-curves} shows baseline Accuracy/Macro‑F1 and calibration (NLL/ECE) across rounds; Figure~\ref{fig:redfocus-curves} shows the same for the red‑focused configuration.
 
 \begin{table}[t]
 \centering
-\caption{Core metrics summary (ESI-5; rounded to 3 decimals).}
-\label{tab:metrics}
+\caption{Core metrics (ESI-5; rounded to 3 decimals).}
+\label{tab:core-metrics}
 \small
 \begin{tabular}{lccccc}
 \toprule
 System & Acc & Macro-F1 & NLL & ECE & Brier \\
 \midrule
 Centralized & \CentralAcc{} & \CentralMacroFOne{} & \CentralNLL{} & \CentralECE{} & \CentralBrier{} \\
-FL Baseline & \FLAcc{} & \FLMacroFOne{} & \FLNLL{} & \FLECE{} & \FLBrier{} \\
+FL Baseline (flat) & \FLAcc{} & \FLMacroFOne{} & \FLNLL{} & \FLECE{} & \FLBrier{} \\
+FL Red-Focus (hier) & \FLRFAcc{} & \FLRFMFOne{} & \FLRFNLL{} & \FLRFECE{} & \FLRFBrier{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Accuracy and Macro-F1 with 95\% CIs (ESI-5).}
+\label{tab:ci-metrics}
+\small
+\begin{tabular}{lcc}
+\toprule
+System & Acc (95\% CI) & Macro-F1 (95\% CI) \\
+\midrule
+Centralized & \CentralAcc{}\,\CentralAccCI{} & \CentralMacroFOne{}\,\CentralMacroFOneCI{} \\
+FL Baseline (flat) & \FLAcc{}\,\FLAccCI{} & \FLMacroFOne{}\,\FLMacroFOneCI{} \\
+FL Red-Focus (hier) & \FLRFAcc{}\,\FLRFAccCI{} & \FLRFMFOne{}\,\FLRFMFOneCI{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Safety metrics (critical band; rounded to 3 decimals).}
+\label{tab:safety}
+\small
+\begin{tabular}{lcc}
+\toprule
+System & Critical sensitivity & Under-triage rate \\
+\midrule
+Centralized & \CentralCritSens{} & \CentralUnder{} \\
+FL Baseline (flat) & \FLCritSens{} & \FLUnder{} \\
+FL Red-Focus (hier) & \FLRFCritSens{} & \FLRFUnder{} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Red-Focused Variant}
-With hierarchical gating and higher safety/critical weights, the red-focused variant prioritizes the critical band (ESI1--2). This improves critical alignment at the cost of overall accuracy under some settings. In FL, constrained threshold searches may not meet extreme targets without additional rounds/personalization. Per-round dynamics are shown in Figure~\ref{fig:redfocus_curves}.
+With hierarchical gating and higher safety/critical weights, the red‑focused variant prioritizes the critical band (ESI1–2). This improves sensitivity to severe cases with a modest cost to overall Accuracy. In federated runs, simple threshold searches may not meet extreme targets without more rounds or personalization.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{docs/figures/fl_advanced_acc_f1_vs_rounds.png}
+    \includegraphics[width=0.95\linewidth]{docs/figures/fl_advanced_ece_nll_vs_rounds.png}
+    \caption{Federated baseline: per-round Accuracy/Macro-F1 (top) and ECE/NLL (bottom).}
+    \label{fig:fl-baseline-curves}
+\end{figure}
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=0.95\linewidth]{docs/figures/fl_advanced_red_focus_acc_f1_vs_rounds.png}
     \includegraphics[width=0.95\linewidth]{docs/figures/fl_advanced_red_focus_ece_nll_vs_rounds.png}
-    \caption{Red-focused federated model: per-round Acc/Macro-F1 (top) and ECE/NLL (bottom).}
-    \label{fig:redfocus_curves}
+    \caption{Federated red-focus (hierarchical): per-round Accuracy/Macro-F1 (top) and ECE/NLL (bottom).}
+    \label{fig:redfocus-curves}
 \end{figure}
 
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{docs/figures/rel_diagrams_histgb.png}
+    \caption{Reliability diagram (tabular baseline, HistGB) after calibration. We show this baseline for visual clarity; the centralized neural model behaves similarly after temperature scaling. The diagonal indicates perfect calibration.}
+    \label{fig:reliability-histgb}
+\end{figure}
 \subsection{Fairness and Interpretability}
 We report subgroup metrics (gender/age) and optional SHAP explanations. Vitals and labs dominate critical-band attribution; interaction terms capture subtle risk shifts. Fairness outputs include per-group accuracy/F1 and rate differences with violation flags when gaps exceed a threshold (default 0.1). SHAP results present global and class-conditional importances.
 
@@ -290,10 +355,43 @@ We ablate (i) focal/penalty weights, (ii) per-class miss scalers, (iii) hierarch
 
 \paragraph*{Significance Testing.} We assess differences using paired bootstrap (Acc, Macro-F1) and McNemar tests on matched predictions; significant improvements are reported where two-sided $p<0.05$.
 
-\paragraph*{Interpreting the figures.} Across federated rounds, Accuracy and Macro‑F1 improve and then stabilize; small wiggles are expected from differences between clients. Calibration curves (NLL/ECE) also improve with training. When we tilt thresholds toward the critical band, the model becomes more sensitive to severe cases at the cost of some overall Accuracy; careful temperature tuning helps. Systems summaries show modest communication and fairly uniform client times. Reliability diagrams for the centralized model show well‑calibrated probabilities, which supports simple threshold‑based decisions.
+\paragraph*{Interpreting the figures.} Across federated rounds, Accuracy and Macro‑F1 improve and then stabilize; small wiggles are expected from differences between clients. Calibration curves (NLL/ECE) also improve with training. When we tilt thresholds toward the critical band, the model becomes more sensitive to severe cases at the cost of some overall Accuracy; careful temperature tuning helps. Systems summaries show modest communication and fairly uniform client times. Reliability diagrams indicate well‑calibrated probabilities; for visual clarity we display a tabular baseline (HistGB), and the centralized neural model exhibits similar behavior after temperature scaling, supporting simple threshold‑based decisions.
+
+\subsection{Privacy--Utility (DP-SGD)}
+When DP-SGD is enabled, we observe small changes in validation/test performance at moderate noise (e.g., noise multiplier 1.0) while obtaining formal $(\varepsilon,\delta)$ guarantees. Our reports log \texttt{epsilon\_per\_round} (FL) or per-epoch $\varepsilon$ (centralized) to quantify the trade-off; we visualize accuracy vs $\varepsilon$ as privacy--utility curves when available. At the same operating points, clinical safety metrics (critical sensitivity, under-triage) remain close to their non-DP counterparts, with expected tolerance controlled via thresholding.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{docs/figures/fl_advanced_privacy_utility.png}
+    \caption{Privacy--utility curve: validation Accuracy vs privacy parameter $\varepsilon$ per round (federated, small run).}
+    \label{fig:privacy-utility}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{docs/figures/fl_advanced_privacy_utility_multi.png}
+    \caption{Privacy--utility curves across noise multipliers (0.5, 1.0, 1.5) on federated runs with 5 clients and 10 rounds.}
+    \label{fig:privacy-utility-multi}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{DP run (5 clients, 10 rounds, noise=1.0): example $\varepsilon$ and validation Accuracy.}
+\label{tab:dp-eps-acc}
+\small
+\begin{tabular}{lcc}
+\toprule
+Round & $\varepsilon$ & Val Acc (\%) \\
+\midrule
+1 & 0.308 & 42.33 \\
+5 & 0.308 & 42.33 \\
+10 & 0.308 & 42.33 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \section{Threat Model and Privacy Considerations}
-We adopt an honest-but-curious server: clients share model updates (not raw data) with a central aggregator. These experiments do not apply secure aggregation or DP; gradient leakage or membership inference remain theoretical risks. In deployment, we recommend secure aggregation and client-side DP-SGD, plus audit logging and model-card documentation. No PII leaves client silos in our design.
+We adopt an honest-but-curious server: clients share model updates (not raw data) with a central aggregator. Unless noted, we do not apply secure aggregation in these experiments. Client-side DP-SGD can be enabled to provide training-time $(\varepsilon,\delta)$ guarantees with GroupNorm in place of BatchNorm. In deployment, we recommend combining secure aggregation and DP-SGD, plus audit logging and model-card documentation. No PII leaves client silos in our design.
 
 \section{Reproducibility}
 To facilitate faithful replication, we outline the essential steps and settings used in our experiments. This checklist abstracts away any particular codebase.

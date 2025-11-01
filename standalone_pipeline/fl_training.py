@@ -369,6 +369,8 @@ def _train_local(
         try:
             # Replace BN with GN before making private
             _replace_bn_with_gn(model)
+            # Ensure training mode before attaching PrivacyEngine
+            model.train()
             dp_cfg: Dict = getattr(base_model, "_dp_config")
             noise = float(dp_cfg.get("noise_multiplier", 1.0))
             max_grad_norm = float(dp_cfg.get("max_grad_norm", 1.0))
@@ -407,7 +409,9 @@ def _train_local(
             total_correct += (preds == targets).sum().item()
             total_seen += targets.size(0)
 
-    state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+    # Use underlying module weights if model is wrapped by Opacus
+    raw_state_dict = getattr(model, "_module", model).state_dict()
+    state = {k: v.detach().cpu() for k, v in raw_state_dict.items()}
     avg_loss = total_loss / total_seen
     avg_acc = total_correct / total_seen
     # Return epsilon estimate if available
@@ -468,6 +472,22 @@ def federated_training(
     X_train = X_train.fillna(train_impute)
     X_val = X_val.fillna(train_impute)
     X_test = X_test.fillna(train_impute)
+
+    # Optional fast mode: sample a fraction of data for quick DP sanity runs
+    try:
+        sample_frac = float(os.getenv("TRIAJ_SAMPLE_FRACTION", "1.0"))
+    except Exception:
+        sample_frac = 1.0
+    if 0.0 < sample_frac < 1.0:
+        rand = np.random.default_rng(42)
+        def _sample_df_y(df, yy, frac: float):
+            n = len(df)
+            k = max(1, int(n * frac))
+            idx = rand.choice(n, size=k, replace=False)
+            return df.iloc[idx].reset_index(drop=True), yy[idx]
+        X_train, y_train = _sample_df_y(X_train, y_train, sample_frac)
+        X_val, y_val = _sample_df_y(X_val, y_val, min(1.0, sample_frac))
+        X_test, y_test = _sample_df_y(X_test, y_test, min(1.0, sample_frac))
 
     # Split training data across clients (IID or Dirichlet non-IID)
     rng = np.random.default_rng(42)
@@ -549,6 +569,11 @@ def federated_training(
             "max_grad_norm": dp_max_grad_norm,
             "delta": dp_delta,
         })
+        # Ensure server model uses GroupNorm to match client-side DP models
+        try:
+            _replace_bn_with_gn(global_model)
+        except Exception:
+            pass
 
     # Tune loss defaults for ESI1–2 focus when not provided
     k = int(len(np.unique(y)))

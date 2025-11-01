@@ -397,6 +397,19 @@ def train_advanced_model(
     X = df_engineered[groups.all()]
     y = df_engineered[target_col].astype(int).to_numpy()
 
+    # Optional fast mode for DP sanity checks: sample a fraction before split
+    try:
+        sample_frac = float(os.getenv("TRIAJ_SAMPLE_FRACTION", "1.0"))
+    except Exception:
+        sample_frac = 1.0
+    if 0.0 < sample_frac < 1.0:
+        n_all = len(X)
+        k_all = max(1, int(n_all * sample_frac))
+        rng = np.random.default_rng(42)
+        sel = rng.choice(n_all, size=k_all, replace=False)
+        X = X.iloc[sel].reset_index(drop=True)
+        y = y[sel]
+
     # Stratified splits (capture original indices for reproducibility)
     X_train, X_temp, y_train, y_temp = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=42

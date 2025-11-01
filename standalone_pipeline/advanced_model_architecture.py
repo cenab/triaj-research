@@ -80,9 +80,16 @@ class AdvancedHierarchicalTriageModel(nn.Module):
         self.lab_proj = nn.Linear(32, self.token_dim)
         self.interaction_proj = nn.Linear(16, self.token_dim)
 
-        self.attention = nn.MultiheadAttention(
-            embed_dim=self.token_dim, num_heads=4, batch_first=True, dropout=0.1
-        )
+        # Use DP-compatible attention if available (Opacus), fall back otherwise
+        try:  # pragma: no cover - optional dependency
+            from opacus.layers.dp_multihead_attention import DPMultiheadAttention  # type: ignore
+            self.attention = DPMultiheadAttention(
+                embed_dim=self.token_dim, num_heads=4, batch_first=True, dropout=0.1
+            )
+        except Exception:
+            self.attention = nn.MultiheadAttention(
+                embed_dim=self.token_dim, num_heads=4, batch_first=True, dropout=0.1
+            )
         self.token_residual = nn.Linear(self.token_dim, self.token_dim)
 
         self.classifier = nn.Sequential(
