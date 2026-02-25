@@ -129,8 +129,30 @@ def _ensure_group(df: pd.DataFrame, cols: List[str], prefix: str) -> List[str]:
 
 
 def load_feature_engineered_dataframe(
-    *, csv_path: Path = Path("src/kaggle_triage_data.csv"), use_advanced_fe: bool = True
+    *,
+    csv_path: Path = Path("src/kaggle_triage_data.csv"),
+    use_advanced_fe: bool = True,
+    cache_dir: Path = Path("data/processed"),
 ) -> Tuple[pd.DataFrame, FeatureGroups, str]:
+    """Load Kaggle data and return a feature-engineered dataframe + feature groups.
+
+    To avoid repeated heavy feature engineering on the 560k-row Kaggle CSV, we cache
+    the engineered dataframe and feature group lists under `cache_dir`.
+    """
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_tag = "advanced" if (use_advanced_fe and advanced_kaggle_feature_engineering is not None) else "simple"
+    cache_df = cache_dir / f"feature_engineered_{cache_tag}.pkl"
+    cache_meta = cache_dir / f"feature_engineered_{cache_tag}.json"
+    if cache_df.exists() and cache_meta.exists():
+        try:
+            meta = json.loads(cache_meta.read_text(encoding="utf-8"))
+            df_engineered = pd.read_pickle(cache_df)
+            groups = FeatureGroups(**meta["feature_groups"])
+            target_col = str(meta["target_col"])
+            return df_engineered, groups, target_col
+        except Exception:
+            # Cache corruption or version mismatch; fall back to recompute.
+            pass
     if csv_path.exists():
         df = pd.read_csv(csv_path)
     else:
@@ -151,8 +173,19 @@ def load_feature_engineered_dataframe(
         if "gender" in dff.columns and "gender_original" not in dff.columns:
             dff["gender_original"] = dff["gender"].fillna("Unknown").astype(str)
 
+        # Site identifier for cross-silo federation/per-site reporting.
+        if "site_id" not in dff.columns:
+            if "dep_name" in dff.columns:
+                dff["site_id"] = dff["dep_name"].astype(str)
+            else:
+                dff["site_id"] = "site_0"
+
         keep = list({*vital_feats, *symptom_feats, *risk_feats, *context_feats, *lab_feats, *interaction_feats})
-        extra = [target_col] + (["gender_original"] if "gender_original" in dff.columns else [])
+        extra = [target_col]
+        if "gender_original" in dff.columns:
+            extra.append("gender_original")
+        if "site_id" in dff.columns:
+            extra.append("site_id")
         df_engineered = dff[keep + extra].reset_index(drop=True)
 
         feature_groups = FeatureGroups(
@@ -163,6 +196,15 @@ def load_feature_engineered_dataframe(
             lab=_ensure_group(df_engineered, lab_feats, "lab"),
             interaction=_ensure_group(df_engineered, interaction_feats, "interaction"),
         )
+        # Persist cache
+        try:
+            df_engineered.to_pickle(cache_df)
+            cache_meta.write_text(
+                json.dumps({"target_col": target_col, "feature_groups": feature_groups.__dict__}, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
         return df_engineered, feature_groups, target_col
 
     df_engineered, spec = feature_engineer_kaggle_data(df.copy())
@@ -177,7 +219,12 @@ def load_feature_engineered_dataframe(
     keep = [col for col in keep if (col not in lab_feats_all) or (col in lab_last)]
     keep = sorted(set(keep))
 
-    df_engineered = df_engineered[keep + [target_col]]
+    extra = [target_col]
+    if "gender_original" in df_engineered.columns:
+        extra.append("gender_original")
+    if "site_id" in df_engineered.columns:
+        extra.append("site_id")
+    df_engineered = df_engineered[keep + extra]
 
     vital_feats = [c for c in spec.groups.get("vital", []) if c in keep]
     symptom_feats = [c for c in spec.groups.get("symptom", []) if c in keep]
@@ -196,6 +243,16 @@ def load_feature_engineered_dataframe(
         lab=_ensure_group(df_engineered, lab_feats, "lab"),
         interaction=_ensure_group(df_engineered, interaction_feats, "interaction"),
     )
+
+    # Persist cache
+    try:
+        df_engineered.to_pickle(cache_df)
+        cache_meta.write_text(
+            json.dumps({"target_col": target_col, "feature_groups": feature_groups.__dict__}, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
 
     return df_engineered, feature_groups, target_col
 
@@ -369,8 +426,9 @@ def _sweep_thresholds_top2(
 
 def train_advanced_model(
     *,
-    epochs: int = 25,
-    batch_size: int = 128,
+    # Paper-default hyperparameters (kept as defaults so `python -m ...` reproduces the paper).
+    epochs: int = 10,
+    batch_size: int = 256,
     learning_rate: float = 5e-3,
     output_dir: str = "results",
     model_kwargs: Dict | None = None,
@@ -448,7 +506,12 @@ def train_advanced_model(
     val_loader = DataLoader(_make_dataset(X_val, y_val, groups), batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(_make_dataset(X_test, y_test, groups), batch_size=batch_size, shuffle=False)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
 
     model_kwargs = model_kwargs or {}
     model = AdvancedHierarchicalTriageModel(
@@ -735,18 +798,36 @@ def train_advanced_model(
         return obj
 
     total_params = sum(p.numel() for p in model.parameters())
-    model_size_mb = total_params * 4 / 1024 ** 2
+    # Keep both definitions explicit: MB uses 1e6 bytes; MiB uses 2^20 bytes.
+    model_size_mb = total_params * 4 / 1e6
+    model_size_mib = total_params * 4 / 1024 ** 2
 
     performance_metrics = {
         "avg_inference_time_ms": avg_inference_time_ms,
         "throughput_samples_per_sec": throughput,
         "model_size_mb": model_size_mb,
+        "model_size_mib": model_size_mib,
         "total_parameters": total_params,
         "total_samples_tested": total_samples,
     }
 
     report = {
         "timestamp": datetime.utcnow().isoformat(),
+        "run_config": {
+            "epochs": int(epochs),
+            "batch_size": int(batch_size),
+            "learning_rate": float(learning_rate),
+            "threshold_sweep": bool(threshold_sweep),
+            "threshold_sample": int(threshold_sample),
+            "use_conformal": bool(use_conformal),
+            "conformal_alpha": float(conformal_alpha),
+            "use_advanced_fe": bool(use_advanced_fe),
+            "calibrate_by": str(calibrate_by),
+            "dp": bool(privacy_engine is not None),
+            "dp_config": {str(k): float(v) if isinstance(v, (int, float)) else v for k, v in (dp_config or {}).items()}
+            if (privacy_engine is not None and dp_config)
+            else None,
+        },
         "clinical_metrics": clinical_metrics,
         "performance_metrics": performance_metrics,
         "training_history": history,
@@ -755,6 +836,7 @@ def train_advanced_model(
             "architecture": "AdvancedHierarchicalTriageModel",
             "total_parameters": total_params,
             "model_size_mb": model_size_mb,
+            "model_size_mib": model_size_mib,
         },
         "calibration": {"temperature": chosen_temperature},
         "thresholds": {

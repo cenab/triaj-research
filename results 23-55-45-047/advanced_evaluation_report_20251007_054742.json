@@ -1,0 +1,166 @@
+{
+  "timestamp": "2025-10-07T05:47:42.586499",
+  "clinical_metrics": {
+    "overall_accuracy": 0.8673906420801749,
+    "class_metrics": {
+      "ESI5": {
+        "precision": 0.945162553858206,
+        "recall": 0.8620936048588782,
+        "f1_score": 0.9017189835575485
+      },
+      "ESI4": {
+        "precision": 0.9653240606587462,
+        "recall": 0.7994560435165187,
+        "f1_score": 0.8745952568478166
+      },
+      "ESI3": {
+        "precision": 0.8137783771634075,
+        "recall": 0.9195699106802693,
+        "f1_score": 0.8634457539201462
+      },
+      "ESI2": {
+        "precision": 0.8797887234313351,
+        "recall": 0.8454106280193237,
+        "f1_score": 0.8622571490940842
+      },
+      "ESI1": {
+        "precision": 0.9161554192229039,
+        "recall": 0.8500948766603416,
+        "f1_score": 0.8818897637795275
+      }
+    },
+    "confusion_matrix": [
+      [
+        2413,
+        43,
+        320,
+        23,
+        0
+      ],
+      [
+        124,
+        9994,
+        2166,
+        214,
+        3
+      ],
+      [
+        12,
+        294,
+        21723,
+        1581,
+        13
+      ],
+      [
+        4,
+        22,
+        2477,
+        13825,
+        25
+      ],
+      [
+        0,
+        0,
+        8,
+        71,
+        448
+      ]
+    ],
+    "clinical_safety": {
+      "under_triage_rate": 0.05397559271006935,
+      "over_triage_rate": 0.07863376520975575,
+      "critical_under_triage_rate": 0.14875592417061612,
+      "critical_sensitivity": 0.8512440758293839
+    }
+  },
+  "performance_metrics": {
+    "avg_inference_time_ms": 0.00895941974445886,
+    "throughput_samples_per_sec": 111614.37107782239,
+    "model_size_mb": 0.22310256958007812,
+    "total_parameters": 58485,
+    "total_samples_tested": 55803
+  },
+  "training_history": {
+    "train_loss": [
+      20.69971270940436,
+      14.017700584807717,
+      12.555281297073673
+    ],
+    "train_acc": [
+      64.55222961182555,
+      79.7669474915047,
+      82.52890196069646
+    ],
+    "val_loss": [
+      15.668748665054201,
+      13.928385008044318,
+      12.269876837847901
+    ],
+    "val_acc": [
+      82.08519255237174,
+      86.57599053814312,
+      68.61817465010841
+    ],
+    "epochs": [
+      1,
+      2,
+      3
+    ]
+  },
+  "privacy": {
+    "dp": false,
+    "epsilon_per_epoch": []
+  },
+  "model_info": {
+    "architecture": "AdvancedHierarchicalTriageModel",
+    "total_parameters": 58485,
+    "model_size_mb": 0.22310256958007812
+  },
+  "calibration": {
+    "temperature": 1.0
+  },
+  "thresholds": {
+    "class_thresholds": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "selection": null
+  },
+  "data_info": {
+    "total_samples": 558029,
+    "train_samples": 446423,
+    "val_samples": 55803,
+    "test_samples": 55803,
+    "class_distribution": [
+      27992,
+      125003,
+      236229,
+      163534,
+      5271
+    ],
+    "feature_dimensions": {
+      "vital": 8,
+      "symptom": 1,
+      "risk": 1,
+      "context": 4,
+      "lab": 15,
+      "interaction": 1
+    }
+  },
+  "summary": {
+    "overall_performance": "Good",
+    "key_findings": [
+      "Overall accuracy: 0.867",
+      "Critical case sensitivity: 0.851",
+      "Under-triage rate: 0.054",
+      "Average inference time: 0.01ms"
+    ],
+    "recommendations": [
+      "Increase sensitivity to top-2 severity (ESI1\u20132) cases (adjust loss weights or thresholds)"
+    ],
+    "risk_assessment": "Low"
+  }
+}

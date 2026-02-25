@@ -99,6 +99,16 @@ def feature_engineer_kaggle_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, Kaggle
     esi_vals = df["esi"].astype(int).clip(lower=1, upper=5)
     df["esi_5class_encoded"] = (5 - esi_vals).astype("Int64")
 
+    # Site identifier (for cross-silo federation / per-site reporting).
+    # Kaggle dataset provides `dep_name` with values like A/B/C.
+    if "site_id" not in df.columns:
+        if "dep_name" in df.columns:
+            df["site_id"] = df["dep_name"].astype(str)
+        else:
+            df["site_id"] = "site_0"
+    else:
+        df["site_id"] = df["site_id"].fillna("site_0").astype(str)
+
     # Carry raw gender for fairness if available
     if "gender" in df.columns and "gender_original" not in df.columns:
         df["gender_original"] = df["gender"].fillna("Unknown").astype(str)
@@ -166,7 +176,7 @@ def feature_engineer_kaggle_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, Kaggle
             groups["risk"].append(col)
 
     # Final dataframe order: features + target + fairness aux (if present)
-    extra = ["esi_5class_encoded"]
+    extra = ["esi_5class_encoded", "site_id"]
     if "gender_original" in df.columns:
         extra.append("gender_original")
     out_cols = features + extra

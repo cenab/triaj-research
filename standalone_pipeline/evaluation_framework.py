@@ -36,6 +36,8 @@ class ClinicalMetrics:
             k = int(max(np.max(y_true), np.max(y_pred))) + 1 if len(y_true) else 0
             if k == 5:
                 class_names = ['ESI5', 'ESI4', 'ESI3', 'ESI2', 'ESI1']
+            elif k == 3:
+                class_names = ['Green', 'Yellow', 'Red']
             else:
                 # ESI-only configuration: fall back to generic class names for non-5-class setups
                 class_names = [f'Class {i}' for i in range(k)]
@@ -45,6 +47,8 @@ class ClinicalMetrics:
         precision = precision_score(y_true, y_pred, average=None, zero_division=0)
         recall = recall_score(y_true, y_pred, average=None, zero_division=0)
         f1 = f1_score(y_true, y_pred, average=None, zero_division=0)
+        macro_f1 = f1_score(y_true, y_pred, average="macro", zero_division=0)
+        weighted_f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
         
         # Confusion matrix
         cm = confusion_matrix(y_true, y_pred)
@@ -52,6 +56,8 @@ class ClinicalMetrics:
         # Triage-specific metrics
         metrics = {
             'overall_accuracy': accuracy,
+            'macro_f1': float(macro_f1),
+            'weighted_f1': float(weighted_f1),
             'class_metrics': {},
             'confusion_matrix': cm.tolist(),
             'clinical_safety': {}

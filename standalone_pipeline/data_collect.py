@@ -353,6 +353,10 @@ def main():
         raw = load_kaggle_triage_data()  # uses cache if exists
         source = "kaggle"
 
+    # If Kaggle has an explicit department/site identifier, use it.
+    if source == "kaggle" and "site_id" not in raw.columns and "dep_name" in raw.columns:
+        raw["site_id"] = raw["dep_name"].astype(str)
+
     # Normalize site_id presence
     if "site_id" not in raw.columns:
         raw["site_id"] = "site_0"

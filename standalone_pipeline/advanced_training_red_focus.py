@@ -361,8 +361,9 @@ def _sweep_thresholds_top2(
 
 def train_advanced_model(
     *,
-    epochs: int = 25,
-    batch_size: int = 128,
+    # Paper-default hyperparameters (kept as defaults so `python -m ...` reproduces the paper).
+    epochs: int = 10,
+    batch_size: int = 256,
     learning_rate: float = 5e-3,
     output_dir: str = "results",
     model_kwargs: Dict | None = None,
@@ -429,7 +430,12 @@ def train_advanced_model(
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
 
     model_kwargs = dict(model_kwargs or {})
     use_hierarchical = model_kwargs.pop("hierarchical", False)
@@ -688,18 +694,31 @@ def train_advanced_model(
         return obj
 
     total_params = sum(p.numel() for p in model.parameters())
-    model_size_mb = total_params * 4 / 1024 ** 2  # float32
+    # Keep both definitions explicit: MB uses 1e6 bytes; MiB uses 2^20 bytes.
+    model_size_mb = total_params * 4 / 1e6  # float32
+    model_size_mib = total_params * 4 / 1024 ** 2
 
     performance_metrics = {
         "avg_inference_time_ms": avg_inference_time_ms,
         "throughput_samples_per_sec": throughput,
         "model_size_mb": model_size_mb,
+        "model_size_mib": model_size_mib,
         "total_parameters": total_params,
         "total_samples_tested": total_samples,
     }
 
     report = {
         "timestamp": datetime.utcnow().isoformat(),
+        "run_config": {
+            "epochs": int(epochs),
+            "batch_size": int(batch_size),
+            "learning_rate": float(learning_rate),
+            "threshold_sweep": bool(threshold_sweep),
+            "threshold_sample": int(threshold_sample),
+            "prioritize_critical": bool(prioritize_critical),
+            "use_conformal": bool(use_conformal),
+            "conformal_alpha": float(conformal_alpha),
+        },
         "clinical_metrics": clinical_metrics,
         "performance_metrics": performance_metrics,
         "training_history": history,
@@ -707,6 +726,7 @@ def train_advanced_model(
             "architecture": "AdvancedHierarchicalTriageEnsemble" if use_hierarchical else "AdvancedHierarchicalTriageModel",
             "total_parameters": total_params,
             "model_size_mb": model_size_mb,
+            "model_size_mib": model_size_mib,
         },
         "calibration": {"temperature": chosen_temperature},
         "thresholds": {

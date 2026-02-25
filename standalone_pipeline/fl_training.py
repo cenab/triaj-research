@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from copy import deepcopy
 from dataclasses import dataclass
@@ -48,8 +49,12 @@ except ImportError:  # pragma: no cover - allow running as top-level script
 # Optional DP library
 try:  # pragma: no cover - optional
     from opacus import PrivacyEngine  # type: ignore
+    from opacus.accountants import RDPAccountant  # type: ignore
+    from opacus.accountants.analysis import rdp as rdp_analysis  # type: ignore
 except Exception:  # pragma: no cover
     PrivacyEngine = None  # type: ignore
+    RDPAccountant = None  # type: ignore
+    rdp_analysis = None  # type: ignore
 
 
 # Removed legacy 3-class baseline threshold sweep (ESI-only)
@@ -143,7 +148,10 @@ def _replace_bn_with_gn(module: nn.Module) -> nn.Module:
     """Recursively replace BatchNorm1d with GroupNorm to enable DP-SGD."""
     for name, child in list(module.named_children()):
         if isinstance(child, nn.BatchNorm1d):
-            gn = nn.GroupNorm(num_groups=min(32, child.num_features), num_channels=child.num_features, affine=True)
+            # DP-safe normalization: use GroupNorm with a single group (LayerNorm-like).
+            # Using many groups on 2D tabular activations can destabilize training and
+            # even cause mode collapse under DP-SGD.
+            gn = nn.GroupNorm(num_groups=1, num_channels=int(child.num_features), affine=True)
             setattr(module, name, gn)
         else:
             _replace_bn_with_gn(child)
@@ -167,12 +175,20 @@ def _make_dataset(df, y, groups: FeatureGroups) -> TensorDataset:
 
 
 def _compose_probs(outputs, temperature: float | None = None) -> torch.Tensor:
+    temp = None
+    if temperature is not None:
+        try:
+            temp = float(temperature)
+        except Exception:
+            temp = None
+        if temp is not None and (not math.isfinite(temp) or temp <= 0.0):
+            temp = None
     if isinstance(outputs, tuple):
         # Temperature scale each head
         heads = []
         for t in outputs:
-            if temperature is not None:
-                scale = torch.tensor(float(temperature), device=t.device, dtype=t.dtype)
+            if temp is not None:
+                scale = torch.tensor(float(temp), device=t.device, dtype=t.dtype)
                 t = t / scale.clamp_min(1e-6)
             heads.append(t)
         outputs = tuple(heads)
@@ -198,8 +214,8 @@ def _compose_probs(outputs, temperature: float | None = None) -> torch.Tensor:
         else:
             raise ValueError("Unsupported hierarchical outputs tuple length")
     logits = outputs
-    if temperature is not None:
-        logits = logits / max(temperature, 1e-6)
+    if temp is not None:
+        logits = logits / max(float(temp), 1e-6)
     return torch.softmax(logits, dim=1)
 
 def _get_temperature(m: nn.Module) -> float:
@@ -207,8 +223,12 @@ def _get_temperature(m: nn.Module) -> float:
     if t is None:
         return 1.0
     if isinstance(t, torch.Tensor):
-        return float(t.detach().cpu().item())
-    return float(t)
+        t = float(t.detach().cpu().item())
+    else:
+        t = float(t)
+    if (not math.isfinite(t)) or t <= 0.0:
+        return 1.0
+    return t
 
 def _evaluate_model(
     model: nn.Module,
@@ -256,8 +276,27 @@ def _evaluate_model(
     return avg_loss, acc, None, None, None
 
 
-def _compute_class_weights(y: np.ndarray, device: torch.device) -> torch.Tensor:
-    weights = compute_class_weight("balanced", classes=np.unique(y), y=y)
+def _compute_class_weights(y: np.ndarray, device: torch.device, *, num_classes: int) -> torch.Tensor:
+    """Balanced class weights with safe handling for missing classes.
+
+    In federated/non-IID splits, a client's local dataset may not contain all classes.
+    sklearn's compute_class_weight() returns only weights for the classes present in y,
+    which is incompatible with torch.nn.CrossEntropyLoss(weight=...), which expects a
+    weight vector of length K (the model's number of classes).
+    """
+    y = np.asarray(y, dtype=int)
+    k = int(max(1, num_classes))
+    if y.size == 0:
+        return torch.ones(k, dtype=torch.float32, device=device)
+    counts = np.bincount(y, minlength=k).astype(np.float64)
+    n = float(counts.sum())
+    # Balanced: n / (k * count_c). For count_c==0, set weight 0 (no local signal).
+    weights = np.zeros(k, dtype=np.float64)
+    for c in range(k):
+        if counts[c] > 0:
+            weights[c] = n / (k * counts[c])
+        else:
+            weights[c] = 0.0
     return torch.tensor(weights, dtype=torch.float32, device=device)
 
 
@@ -323,8 +362,32 @@ def _train_local(
     hierarchical: bool,
 ) -> Tuple[Dict[str, torch.Tensor], float, float, Optional[float]]:
     model = deepcopy(base_model).to(device)
+    dp_cfg = getattr(base_model, "_dp_config", None)
+    dp_enabled = bool(dp_cfg) and PrivacyEngine is not None
+    # Determine number of classes from the model if possible. Client-local datasets in
+    # non-IID splits may not contain all classes.
+    num_classes = None
+    if hasattr(model, "class_thresholds"):
+        try:
+            num_classes = int(model.class_thresholds.numel())  # type: ignore[attr-defined]
+        except Exception:
+            num_classes = None
+    if num_classes is None:
+        try:
+            num_classes = int(np.max(y)) + 1 if len(y) else 1
+        except Exception:
+            num_classes = 1
     # Determine class weights
-    class_weights = _compute_class_weights(y, device)
+    class_weights = _compute_class_weights(y, device, num_classes=int(num_classes))
+    if dp_enabled:
+        # Under DP-SGD, very large class weights can cause extreme clipping and unstable
+        # optimization. We cap them to keep the DP signal-to-noise ratio reasonable.
+        try:
+            cap = float(dp_cfg.get("class_weight_cap", 5.0))
+        except Exception:
+            cap = 5.0
+        if cap > 0:
+            class_weights = torch.clamp(class_weights, max=cap)
     if hierarchical:
         # Head-aware static weights to prioritize ESI1–2 and restore ESI5
         k = None
@@ -346,32 +409,49 @@ def _train_local(
         criterion = AdvancedClinicalSafetyLoss(class_weights=weight_vec, **loss_kwargs)
     else:
         criterion = AdvancedClinicalSafetyLoss(class_weights=class_weights, **loss_kwargs)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    # Optimizer choice: DP-SGD is conventionally run with SGD, but we allow Adam
+    # (useful for tabular models) via dp_cfg for experimentation.
+    if dp_enabled:
+        opt_name = str((dp_cfg or {}).get("optimizer", "sgd")).lower()
+        if opt_name == "adam":
+            optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+        else:
+            optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     total_loss = 0.0
     total_correct = 0
     total_seen = 0
 
-    # Optional: class-balanced sampler per client
-    try:
-        labels = y
-        k_all = int(labels.max()) + 1 if len(labels) else 1
-        counts = np.bincount(labels, minlength=k_all)
-        per_sample = 1.0 / np.clip(counts[labels], 1, None)
-        sampler = WeightedRandomSampler(torch.tensor(per_sample, dtype=torch.float32), num_samples=len(per_sample), replacement=True)
-        train_loader = DataLoader(loader.dataset, batch_size=loader.batch_size, sampler=sampler)
-    except Exception:
-        train_loader = loader
+    # Optional: class-balanced sampler per client.
+    # NOTE: Disabled for DP-SGD runs because sampling assumptions matter for privacy accounting,
+    # and Opacus is typically used with uniform sampling.
+    train_loader = loader
+    disable_balanced = os.getenv("TRIAJ_DISABLE_BALANCED_SAMPLER", "").strip() in {"1", "true", "True", "yes", "YES"}
+    if not dp_enabled and not disable_balanced:
+        try:
+            labels = y
+            k_all = int(labels.max()) + 1 if len(labels) else 1
+            counts = np.bincount(labels, minlength=k_all)
+            per_sample = 1.0 / np.clip(counts[labels], 1, None)
+            sampler = WeightedRandomSampler(
+                torch.tensor(per_sample, dtype=torch.float32),
+                num_samples=len(per_sample),
+                replacement=True,
+            )
+            train_loader = DataLoader(loader.dataset, batch_size=loader.batch_size, sampler=sampler)
+        except Exception:
+            train_loader = loader
 
     # DP-SGD per-client (if enabled on base_model via attribute)
     privacy_engine = None
-    if getattr(base_model, "_dp_config", None) and PrivacyEngine is not None:
+    if dp_enabled:
         try:
             # Replace BN with GN before making private
             _replace_bn_with_gn(model)
             # Ensure training mode before attaching PrivacyEngine
             model.train()
-            dp_cfg: Dict = getattr(base_model, "_dp_config")
             noise = float(dp_cfg.get("noise_multiplier", 1.0))
             max_grad_norm = float(dp_cfg.get("max_grad_norm", 1.0))
             privacy_engine = PrivacyEngine()
@@ -383,7 +463,8 @@ def _train_local(
                 max_grad_norm=max_grad_norm,
             )
         except Exception as e:
-            print(f"[warn] DP-SGD unavailable for client: {e}")
+            # Fail fast: returning a "DP" report when Opacus isn't actually attached is misleading.
+            raise RuntimeError(f"DP-SGD requested but Opacus make_private() failed: {e}") from e
 
     for _ in range(epochs):
         model.train()
@@ -401,7 +482,10 @@ def _train_local(
                 loss = criterion(outputs, targets)
                 probs = torch.softmax(outputs, dim=1)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            # Non-private training uses a final global clip for stability. DP-SGD already
+            # performs per-sample clipping and noise addition via Opacus.
+            if not dp_enabled:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             total_loss += loss.item() * targets.size(0)
@@ -418,7 +502,7 @@ def _train_local(
     epsilon = None
     if privacy_engine is not None:
         try:
-            epsilon = float(privacy_engine.get_epsilon(delta=float(getattr(base_model, "_dp_config").get("delta", 1e-5))))
+            epsilon = float(privacy_engine.get_epsilon(delta=float(dp_cfg.get("delta", 1e-5))))
         except Exception:
             epsilon = None
     return state, avg_loss, avg_acc, epsilon
@@ -447,6 +531,12 @@ def federated_training(
     dp_noise_multiplier: float = 1.0,
     dp_max_grad_norm: float = 1.0,
     dp_delta: float = 1e-5,
+    dp_optimizer: str = "sgd",
+    by_site: bool = False,
+    site_col: str = "site_id",
+    byzantine_fraction: float = 0.0,
+    byzantine_attack: str = "signflip",
+    byzantine_scale: float = 5.0,
 ) -> Dict:
     # Reproducibility seeds and deterministic flags
     np.random.seed(42)
@@ -461,17 +551,60 @@ def federated_training(
     X = df[groups.all()]
     y = df[target_col].astype(int).to_numpy()
 
-    X_train, X_temp, y_train, y_temp = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
-    )
-    X_val, X_test, y_val, y_test = train_test_split(
-        X_temp, y_temp, test_size=0.5, stratify=y_temp, random_state=42
-    )
+    # Splits: either global stratified splits (default) or per-site splits.
+    if by_site:
+        if site_col not in df.columns:
+            raise ValueError(f"--by-site requested but site column '{site_col}' not found in dataframe")
+        site_vals = df[site_col].fillna("site_0").astype(str).to_numpy()
+        unique_sites = sorted(np.unique(site_vals).tolist())
+        if len(unique_sites) < 2:
+            raise ValueError(f"--by-site requires >=2 unique sites; found {len(unique_sites)}")
+        # Override clients to match sites (cross-silo federation).
+        if clients != len(unique_sites):
+            print(f"[info] Overriding clients={clients} to clients={len(unique_sites)} to match sites={unique_sites}")
+        clients = len(unique_sites)
 
-    train_impute = X_train.median()
-    X_train = X_train.fillna(train_impute)
-    X_val = X_val.fillna(train_impute)
-    X_test = X_test.fillna(train_impute)
+        idx_all = np.arange(len(X))
+        idx_train_all: List[int] = []
+        idx_val_all: List[int] = []
+        idx_test_all: List[int] = []
+        for s in unique_sites:
+            idx_s = idx_all[site_vals == s]
+            y_s = y[idx_s]
+            # 80/10/10 within each site
+            idx_train_s, idx_temp_s = train_test_split(
+                idx_s, test_size=0.2, stratify=y_s, random_state=42
+            )
+            y_temp_s = y[idx_temp_s]
+            idx_val_s, idx_test_s = train_test_split(
+                idx_temp_s, test_size=0.5, stratify=y_temp_s, random_state=42
+            )
+            idx_train_all.extend(idx_train_s.tolist())
+            idx_val_all.extend(idx_val_s.tolist())
+            idx_test_all.extend(idx_test_s.tolist())
+
+        X_train = X.iloc[idx_train_all]
+        y_train = y[idx_train_all]
+        X_val = X.iloc[idx_val_all]
+        y_val = y[idx_val_all]
+        X_test = X.iloc[idx_test_all]
+        y_test = y[idx_test_all]
+    else:
+        X_train, X_temp, y_train, y_temp = train_test_split(
+            X, y, test_size=0.2, stratify=y, random_state=42
+        )
+        X_val, X_test, y_val, y_test = train_test_split(
+            X_temp, y_temp, test_size=0.5, stratify=y_temp, random_state=42
+        )
+
+    # Impute + standardize continuous features using training split statistics.
+    from sklearn.preprocessing import StandardScaler
+
+    all_cols = X_train.columns.tolist()
+    train_medians = X_train.median(numeric_only=True)
+    X_train = X_train.copy().fillna(train_medians)
+    X_val = X_val.copy().fillna(train_medians)
+    X_test = X_test.copy().fillna(train_medians)
 
     # Optional fast mode: sample a fraction of data for quick DP sanity runs
     try:
@@ -489,9 +622,25 @@ def federated_training(
         X_val, y_val = _sample_df_y(X_val, y_val, min(1.0, sample_frac))
         X_test, y_test = _sample_df_y(X_test, y_test, min(1.0, sample_frac))
 
-    # Split training data across clients (IID or Dirichlet non-IID)
+    scaler = StandardScaler()
+    X_train[all_cols] = scaler.fit_transform(X_train[all_cols])
+    X_val[all_cols] = scaler.transform(X_val[all_cols])
+    X_test[all_cols] = scaler.transform(X_test[all_cols])
+    preprocess = {
+        "columns": all_cols,
+        "mean": scaler.mean_.tolist(),
+        "scale": scaler.scale_.tolist(),
+        "train_medians": {str(k): float(v) for k, v in train_medians.items()},
+    }
+
+    # Split training data across clients (IID/Dirichlet, or by-site cross-silo).
     rng = np.random.default_rng(42)
-    if non_iid:
+    if by_site:
+        # Client splits are site-aligned. We build splits as positional indices into X_train.
+        site_vals_train = df.loc[X_train.index, site_col].fillna("site_0").astype(str).to_numpy()
+        unique_sites = sorted(np.unique(site_vals_train).tolist())
+        splits = [np.where(site_vals_train == s)[0] for s in unique_sites]
+    elif non_iid:
         y_train_arr = y_train
         classes = np.unique(y_train_arr)
         class_indices = {c: np.where(y_train_arr == c)[0] for c in classes}
@@ -533,7 +682,19 @@ def federated_training(
     val_loader = DataLoader(_make_dataset(X_val, y_val, groups), batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(_make_dataset(X_test, y_test, groups), batch_size=batch_size, shuffle=False)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Device selection: prefer CUDA, then Apple MPS, else CPU.
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+    if dp and PrivacyEngine is None:
+        raise RuntimeError("DP-SGD requested (--dp) but Opacus is not available in this environment.")
+    # Opacus DP-SGD support on MPS can be fragile; fall back to CPU for DP runs.
+    if dp and device.type == "mps":
+        print("[info] DP-SGD enabled: falling back to CPU device (MPS DP support may be incomplete).")
+        device = torch.device("cpu")
 
     # Guard: hierarchical ensemble supports 3-class only
     if hierarchical:
@@ -562,12 +723,12 @@ def federated_training(
         ).to(device)
 
     # Attach DP config to model for local training if requested
-    dp_history: List[float] = []
     if dp:
         setattr(global_model, "_dp_config", {
             "noise_multiplier": dp_noise_multiplier,
             "max_grad_norm": dp_max_grad_norm,
             "delta": dp_delta,
+            "optimizer": str(dp_optimizer),
         })
         # Ensure server model uses GroupNorm to match client-side DP models
         try:
@@ -575,12 +736,21 @@ def federated_training(
         except Exception:
             pass
 
-    # Tune loss defaults for ESI1–2 focus when not provided
+    # Loss defaults:
+    # - Non-DP runs default to a stronger critical-miss penalty for ESI-5.
+    # - DP runs use a DP-friendly objective (disable safety penalties by default),
+    #   since large, non-smooth penalty terms can dominate clipped gradients and stall learning.
     k = int(len(np.unique(y)))
     eff_loss_kwargs = dict(loss_kwargs)
-    if "critical_miss_penalty" not in eff_loss_kwargs and k >= 5:
-        eff_loss_kwargs["critical_miss_penalty"] = 150.0
-    global_class_weights = _compute_class_weights(y_train, device)
+    if dp:
+        eff_loss_kwargs.setdefault("w_focal", 0.1)
+        eff_loss_kwargs.setdefault("w_safety", 0.0)
+        eff_loss_kwargs.setdefault("w_critical", 0.0)
+        eff_loss_kwargs.setdefault("critical_miss_penalty", 50.0)
+    else:
+        if "critical_miss_penalty" not in eff_loss_kwargs and k >= 5:
+            eff_loss_kwargs["critical_miss_penalty"] = 150.0
+    global_class_weights = _compute_class_weights(y_train, device, num_classes=int(np.max(y) + 1))
     criterion = AdvancedClinicalSafetyLoss(class_weights=global_class_weights, **eff_loss_kwargs)
 
     history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": [], "val_macro_f1": [], "rounds": []}
@@ -588,7 +758,20 @@ def federated_training(
     comm_history = {"bytes_per_round": []}
     systems_history = {"client_time_mean": [], "client_time_std": []}
 
+    # DP accounting across rounds (cumulative epsilon). We compute a max-over-clients
+    # privacy budget curve to use in the paper.
     dp_round_history: List[float] = []
+    dp_client_steps_per_round: List[int] = []
+    dp_client_sample_rates: List[float] = []
+    dp_alphas = None
+    if dp and (RDPAccountant is not None) and (rdp_analysis is not None):
+        dp_alphas = list(getattr(RDPAccountant, "DEFAULT_ALPHAS", [2, 4, 8, 16, 32, 64]))
+        for loader, n in zip(client_loaders, client_sizes):
+            steps = int(local_epochs) * int(len(loader))
+            dp_client_steps_per_round.append(max(1, steps))
+            q = float(batch_size) / float(max(1, n))
+            dp_client_sample_rates.append(min(1.0, q))
+        dp_steps_cum = [0 for _ in range(clients)]
     momentum_buffer: Dict[str, torch.Tensor] | None = None
     for rnd in range(1, rounds + 1):
         print(f"\n--- Federated Round {rnd}/{rounds} ---")
@@ -599,8 +782,17 @@ def federated_training(
         weights = []
 
         client_times = []
-        round_epsilons: List[float] = []
-        for loader, subset_y, size in zip(client_loaders, client_targets, client_sizes):
+
+        # Choose malicious clients for this round (if enabled). We select indices
+        # deterministically from the RNG seed for reproducibility.
+        malicious: set[int] = set()
+        if byzantine_fraction and byzantine_fraction > 0.0:
+            n_mal = int(np.ceil(float(byzantine_fraction) * clients))
+            n_mal = max(1, min(clients, n_mal))
+            mal_idx = rng.choice(np.arange(clients), size=n_mal, replace=False)
+            malicious = set(int(x) for x in mal_idx.tolist())
+
+        for client_idx, (loader, subset_y, size) in enumerate(zip(client_loaders, client_targets, client_sizes)):
             local_model = deepcopy(global_model).cpu()
             local_model.load_state_dict(global_state)
             t0 = time.perf_counter()
@@ -616,12 +808,35 @@ def federated_training(
             )
             t1 = time.perf_counter()
             client_times.append(t1 - t0)
+            # Optional Byzantine behavior: corrupt the client update before aggregation.
+            if client_idx in malicious:
+                attacked: Dict[str, torch.Tensor] = {}
+                for k, v in state.items():
+                    g = global_state[k]
+                    update = v - g
+                    # Some state entries are integer buffers (e.g., BN counters). Don't corrupt them.
+                    if not torch.is_floating_point(update):
+                        attacked[k] = v
+                        continue
+                    if byzantine_attack == "signflip":
+                        attacked[k] = g - float(byzantine_scale) * update
+                    elif byzantine_attack == "scale":
+                        attacked[k] = g + float(byzantine_scale) * update
+                    elif byzantine_attack == "gaussian":
+                        # Use unbiased=False: std() on a scalar is NaN under the default unbiased
+                        # estimator, which can poison scalar buffers like calibration_temperature.
+                        std = update.std(unbiased=False)
+                        if not bool(torch.isfinite(std).item()):
+                            std = torch.zeros((), dtype=update.dtype, device=update.device)
+                        scale = float(byzantine_scale) * std.clamp_min(1e-12)
+                        attacked[k] = g + torch.randn_like(update) * scale
+                    else:
+                        attacked[k] = v
+                state = attacked
             client_states.append(state)
             client_losses.append(loss)
             client_accs.append(acc)
             weights.append(size / sum(client_sizes))
-            if eps is not None:
-                round_epsilons.append(eps)
 
         aggregated_state, momentum_buffer = _aggregate_states(
             client_states,
@@ -673,8 +888,22 @@ def federated_training(
             systems_history["client_time_std"].append(0.0)
 
         # DP epsilon per round (aggregate max across clients)
-        if round_epsilons:
-            dp_round_history.append(float(max(round_epsilons)))
+        if dp and (dp_alphas is not None) and dp_client_steps_per_round:
+            # Update cumulative steps and compute epsilon per client using RDP analysis.
+            epsilons: List[float] = []
+            for i in range(clients):
+                dp_steps_cum[i] += dp_client_steps_per_round[i]
+                q = dp_client_sample_rates[i]
+                # Compute RDP and convert to (eps, alpha).
+                rdp_vals = rdp_analysis.compute_rdp(
+                    q=q,
+                    noise_multiplier=float(dp_noise_multiplier),
+                    steps=int(dp_steps_cum[i]),
+                    orders=dp_alphas,
+                )
+                eps_i, _ = rdp_analysis.get_privacy_spent(orders=dp_alphas, rdp=rdp_vals, delta=float(dp_delta))
+                epsilons.append(float(eps_i))
+            dp_round_history.append(float(max(epsilons)))
 
     # Calibration on validation set
     chosen_temperature = getattr(global_model, "calibration_temperature", torch.tensor(1.0)).item()
@@ -846,17 +1075,40 @@ def federated_training(
 
     report = {
         "timestamp": datetime.utcnow().isoformat(),
+        "run_config": {
+            "rounds": int(rounds),
+            "clients": int(clients),
+            "local_epochs": int(local_epochs),
+            "batch_size": int(batch_size),
+            "learning_rate": float(learning_rate),
+            "hierarchical": bool(hierarchical),
+            "non_iid": bool(non_iid),
+            "dirichlet_alpha": float(dirichlet_alpha),
+            "aggregator": str(aggregator),
+            "momentum": float(momentum),
+            "trim_fraction": float(trim_fraction),
+            "by_site": bool(by_site),
+            "site_col": str(site_col) if by_site else None,
+            "dp": bool(dp),
+            "dp_optimizer": str(dp_optimizer) if dp else None,
+            "dp_noise_multiplier": float(dp_noise_multiplier) if dp else None,
+            "dp_max_grad_norm": float(dp_max_grad_norm) if dp else None,
+            "dp_delta": float(dp_delta) if dp else None,
+        },
         "clinical_metrics": clinical_metrics,
         "performance_metrics": {
             "avg_inference_time_ms": avg_inference_time_ms,
             "throughput_samples_per_sec": throughput,
-            "model_size_mb": sum(p.numel() for p in global_model.parameters()) * 4 / 1024 ** 2,
+            # MB uses 1e6 bytes for consistency with communication reporting.
+            "model_size_mb": sum(p.numel() for p in global_model.parameters()) * 4 / 1e6,
+            "model_size_mib": sum(p.numel() for p in global_model.parameters()) * 4 / 1024 ** 2,
             "total_parameters": sum(p.numel() for p in global_model.parameters()),
             "total_samples_tested": total_samples,
         },
         "training_history": history,
         "reliability_history": reliability_history,
         "communication_history": comm_history,
+        "systems_history": systems_history,
         "model_info": {
             "architecture": "AdvancedHierarchicalTriageEnsemble" if hierarchical else "AdvancedHierarchicalTriageModel",
         },
@@ -865,16 +1117,52 @@ def federated_training(
         "reliability_metrics": reliability_metrics,
         "bootstrap_ci": {k: tuple(map(float, v)) for k, v in bootstrap_ci.items()},
         "fairness_metrics": _serialise(fairness_metrics),
-        "privacy": {"dp": dp, "epsilon_per_round": dp_round_history},
+        "privacy": {
+            "dp": dp,
+            "epsilon_per_round": dp_round_history,
+            "epsilon_total": float(dp_round_history[-1]) if dp_round_history else None,
+            "accounting": "RDP (opacus.analysis.rdp) with per-client sample_rate=batch_size/n and cumulative steps across rounds"
+            if dp and dp_round_history
+            else None,
+            "optimizer": str(dp_optimizer) if dp else None,
+            "noise_multiplier": float(dp_noise_multiplier) if dp else None,
+            "max_grad_norm": float(dp_max_grad_norm) if dp else None,
+            "delta": float(dp_delta) if dp else None,
+        },
         "data_info": {
             "total_samples": len(df),
             "train_samples": len(X_train),
             "val_samples": len(X_val),
             "test_samples": len(X_test),
             "class_distribution": np.bincount(y).tolist(),
+            "by_site": bool(by_site),
+            "site_col": str(site_col) if by_site else None,
+            "site_distribution": (
+                df[site_col].fillna("site_0").astype(str).value_counts().to_dict() if by_site and site_col in df.columns else None
+            ),
+            "preprocess": preprocess,
         },
         "summary": summary,
     }
+
+    # Per-site test metrics (when site IDs are available)
+    if by_site and site_col in df.columns:
+        site_test = df.loc[X_test.index, site_col].fillna("site_0").astype(str).to_numpy()
+        per_site = {}
+        for s in sorted(np.unique(site_test).tolist()):
+            mask = site_test == s
+            if not np.any(mask):
+                continue
+            per_site[str(s)] = ClinicalMetrics.calculate_triage_metrics(y_true[mask], y_pred[mask])
+        report["per_site_test_metrics"] = per_site
+
+    # Byzantine configuration (if enabled)
+    if byzantine_fraction and byzantine_fraction > 0.0:
+        report["byzantine"] = {
+            "fraction": float(byzantine_fraction),
+            "attack": str(byzantine_attack),
+            "scale": float(byzantine_scale),
+        }
 
     report["selection_criterion"] = {
         "primary_metric": "critical_sensitivity",
@@ -945,9 +1233,16 @@ def federated_training(
         print(f"Saved acc/f1 plot to {fig2_path_ts} and {fig2_path_stable}")
         # Systems: Comm and client time std
         fig3, axc = plt.subplots(figsize=(7.2, 3.8))
-        axc.plot(rounds_axis, [b/1e6 for b in comm_history["bytes_per_round"]], marker='o', linewidth=2.0, color='tab:orange', label='Comm (MB/round)')
+        axc.plot(
+            rounds_axis,
+            [b / 1e6 for b in comm_history["bytes_per_round"]],
+            marker="o",
+            linewidth=2.0,
+            color="tab:orange",
+            label="Total comm (MB/round)",
+        )
         axc.set_xlabel('Round', fontsize=11)
-        axc.set_ylabel('Comm (MB/round)', fontsize=11, color='tab:orange')
+        axc.set_ylabel('Total comm (MB/round)', fontsize=11, color='tab:orange')
         axc.tick_params(axis='y', labelcolor='tab:orange')
         axd = axc.twinx()
         # If systems_history is not available, default to zeros
@@ -969,22 +1264,66 @@ def federated_training(
         plt.savefig(fig3_path_stable, dpi=300, bbox_inches='tight')
         plt.close(fig3)
         print(f"Saved systems plot to {fig3_path_ts} and {fig3_path_stable}")
-        # Privacy–utility (if DP enabled)
+        # DP privacy/utility (if enabled): show accuracy and cumulative epsilon across rounds,
+        # and a privacy–utility curve using the cumulative epsilon (max over clients).
         if dp_round_history:
-            eps = dp_round_history
-            acc = history["val_acc"][: len(eps)]
-            fig4, ax4 = plt.subplots(figsize=(6.8, 4.0))
-            ax4.plot(eps, acc, marker='o', linewidth=2.0)
-            ax4.set_xlabel('Privacy parameter ε (per round)', fontsize=11)
-            ax4.set_ylabel('Validation Accuracy (%)', fontsize=11)
-            ax4.set_title('Privacy–Utility Curve (Federated)', fontsize=12)
+            eps_cum = list(dp_round_history)
+            rounds_eps = rounds_axis[: len(eps_cum)]
+            acc = history["val_acc"][: len(eps_cum)]
+
+            fig4, (ax4a, ax4b) = plt.subplots(1, 2, figsize=(11.2, 3.8))
+
+            # Left: rounds vs accuracy + cumulative epsilon (twin axis)
+            ax4a.plot(
+                rounds_eps,
+                acc,
+                marker="o",
+                linewidth=2.0,
+                color="tab:green",
+                label="Val acc (%)",
+            )
+            ax4a.set_xlabel("Round", fontsize=11)
+            ax4a.set_ylabel("Val acc (%)", fontsize=11, color="tab:green")
+            ax4a.tick_params(axis="y", labelcolor="tab:green")
+            ax4a.grid(alpha=0.25)
+            ax4a2 = ax4a.twinx()
+            ax4a2.plot(
+                rounds_eps,
+                eps_cum,
+                marker="s",
+                linewidth=2.0,
+                color="tab:blue",
+                label="Cumulative ε (max client)",
+            )
+            ax4a2.set_ylabel("Cumulative ε (max client)", fontsize=11, color="tab:blue")
+            ax4a2.tick_params(axis="y", labelcolor="tab:blue")
+            ax4a.set_title("DP Accounting vs Rounds", fontsize=12)
+
+            lines1, labels1 = ax4a.get_legend_handles_labels()
+            lines2, labels2 = ax4a2.get_legend_handles_labels()
+            ax4a.legend(lines1 + lines2, labels1 + labels2, loc="best", fontsize=9)
+
+            # Right: privacy–utility
+            ax4b.plot(
+                eps_cum,
+                acc,
+                marker="o",
+                linewidth=2.0,
+                color="tab:purple",
+            )
+            ax4b.set_xlabel("Cumulative ε (max client)", fontsize=11)
+            ax4b.set_ylabel("Val acc (%)", fontsize=11)
+            ax4b.set_title("Privacy–Utility", fontsize=12)
+            ax4b.grid(alpha=0.25)
+
+            fig4.suptitle("DP-SGD: Privacy and Utility Across Rounds", fontsize=12, y=1.05)
             fig4.tight_layout()
             fig4_path_ts = figures_dir / f"fl_{output_suffix}_privacy_utility_{timestamp}.png"
             fig4_path_stable = figures_dir / f"fl_{output_suffix}_privacy_utility.png"
-            plt.savefig(fig4_path_ts, dpi=300, bbox_inches='tight')
-            plt.savefig(fig4_path_stable, dpi=300, bbox_inches='tight')
+            plt.savefig(fig4_path_ts, dpi=300, bbox_inches="tight")
+            plt.savefig(fig4_path_stable, dpi=300, bbox_inches="tight")
             plt.close(fig4)
-            print(f"Saved privacy–utility plot to {fig4_path_ts} and {fig4_path_stable}")
+            print(f"Saved DP privacy/utility plot to {fig4_path_ts} and {fig4_path_stable}")
     except Exception as e:
         print(f"Skipping reliability plot (matplotlib not available?): {e}")
     torch.save(
@@ -1019,6 +1358,14 @@ def main():
     parser.add_argument("--dp-noise-multiplier", type=float, default=1.0)
     parser.add_argument("--dp-max-grad-norm", type=float, default=1.0)
     parser.add_argument("--dp-delta", type=float, default=1e-5)
+    parser.add_argument("--dp-optimizer", choices=["sgd", "adam"], default="sgd", help="Optimizer for DP-SGD local training")
+    # Site-aware cross-silo federation
+    parser.add_argument("--by-site", action="store_true", help="Use site_id/dep_name as FL clients (cross-silo)")
+    parser.add_argument("--site-col", type=str, default="site_id", help="Column name for site identifier")
+    # Byzantine simulation (robust aggregation evaluation)
+    parser.add_argument("--byzantine-fraction", type=float, default=0.0, help="Fraction of clients to corrupt each round")
+    parser.add_argument("--byzantine-attack", choices=["signflip", "scale", "gaussian"], default="signflip")
+    parser.add_argument("--byzantine-scale", type=float, default=5.0)
     args = parser.parse_args()
 
     if args.mode == "baseline":
@@ -1047,6 +1394,12 @@ def main():
             dp_noise_multiplier=args.dp_noise_multiplier,
             dp_max_grad_norm=args.dp_max_grad_norm,
             dp_delta=args.dp_delta,
+            dp_optimizer=args.dp_optimizer,
+            by_site=args.by_site,
+            site_col=args.site_col,
+            byzantine_fraction=args.byzantine_fraction,
+            byzantine_attack=args.byzantine_attack,
+            byzantine_scale=args.byzantine_scale,
         )
     else:
         loss_kwargs = {
@@ -1085,6 +1438,12 @@ def main():
             dp_noise_multiplier=args.dp_noise_multiplier,
             dp_max_grad_norm=args.dp_max_grad_norm,
             dp_delta=args.dp_delta,
+            dp_optimizer=args.dp_optimizer,
+            by_site=args.by_site,
+            site_col=args.site_col,
+            byzantine_fraction=args.byzantine_fraction,
+            byzantine_attack=args.byzantine_attack,
+            byzantine_scale=args.byzantine_scale,
         )
 
 
